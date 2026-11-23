@@ -95,16 +95,15 @@ function Home() {
   }, []);
   return html`
     <section class="hero">
-      <div class="hero-txt">
-        <span class="tag tag-red">Başkent Üniversitesi</span>
-        <h1 class="h hero-h">Sahne<br />hepimizin.</h1>
-        <p class="muted lead">Başkent Üniversitesi Müzik Topluluğu: her cuma prova odası, ayda iki dinleti, enstrüman kursları ve BÜMT Fest. Üye ol, rezervasyonunu yap, sahneye çık.</p>
-        <div class="row">
-          <a class="btn btn-red" href="#/prova">Prova odası rezervasyonu</a>
-          <a class="btn btn-ghost" href="#/kurslar">Enstrüman kursları</a>
-        </div>
+      <div class="hero-badge"><img src="/assets/logo.png" alt="Başkent Müzik Topluluğu logosu" /></div>
+      <span class="hero-kicker">Kampüsün müzik topluluğu</span>
+      <h1 class="h hero-h">Sahne hepimizin.</h1>
+      <p class="hero-lead">Başkent Üniversitesi Müzik Topluluğu'na hoş geldin! Burası çalan, söyleyen, dinleyen ve müziği seven herkesin buluşma noktası. İlk akorunu yeni öğreniyor olsan da yıllardır sahnede olsan da burada sana yer var.</p>
+      <p class="hero-sub">Üye ol, prova odasını ayır, enstrüman derslerine göz at ve etkinliklerimizden ilk sen haberdar ol.</p>
+      <div class="hero-cta">
+        <a class="btn btn-red" href="#/prova">Prova odası rezervasyonu</a>
+        <a class="btn btn-cream" href="#/kurslar">Enstrüman kursları</a>
       </div>
-      <div class="hero-logo"><div class="logo-card"><img src="/assets/logo.png" alt="Başkent Müzik Topluluğu logosu" /></div></div>
     </section>
 
     <section class="sec">
