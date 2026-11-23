@@ -292,3 +292,76 @@ function shortName(n) {
   if (parts.length < 2) return parts[0] || 'Öğrenci';
   return parts[0] + ' ' + parts[parts.length - 1][0] + '.';
 }
+
+// ---- QR okuyucu (telefon kamerası) -----------------------------------
+export const yoklamaCode = (text) => { const m = String(text || '').match(/#\/yoklama\/([A-Za-z0-9]+)/); return m ? m[1] : null; };
+export const timeTR = (iso) => iso ? new Date(iso).toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' }) : '';
+
+export function QrScanner({ onResult, onClose }) {
+  const videoRef = useRef(null);
+  const [err, setErr] = useState('');
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let stream = null, stopped = false, timer = null, detector = null, jsQR = null;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    (async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setErr('Bu tarayıcı kamerayı açamıyor. QR kodu telefonunun kamera uygulamasıyla okut; site kendiliğinden açılır.');
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      } catch (e) {
+        setErr('Kameraya izin verilmedi. Tarayıcı ayarlarından kamera iznini aç ya da QR kodu telefonunun kamera uygulamasıyla okut.');
+        return;
+      }
+      if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+      const v = videoRef.current;
+      v.srcObject = stream;
+      await v.play().catch(() => {});
+      setReady(true);
+      if ('BarcodeDetector' in window) { try { detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { detector = null; } }
+      if (!detector) {
+        try { jsQR = (await import('https://esm.sh/jsqr@1.4.0')).default; } catch (e) { setErr('QR okuyucu yüklenemedi. QR kodu telefonunun kamera uygulamasıyla okut.'); return; }
+      }
+      const tick = async () => {
+        if (stopped) return;
+        try {
+          if (v.readyState >= 2 && v.videoWidth) {
+            let text = null;
+            if (detector) {
+              const codes = await detector.detect(v);
+              if (codes && codes[0]) text = codes[0].rawValue;
+            } else if (jsQR) {
+              const s = Math.min(1, 640 / v.videoWidth);
+              canvas.width = Math.round(v.videoWidth * s);
+              canvas.height = Math.round(v.videoHeight * s);
+              ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+              if (r) text = r.data;
+            }
+            if (text) { stopped = true; onResult(text); return; }
+          }
+        } catch (e) { /* bir sonraki karede tekrar dene */ }
+        timer = setTimeout(tick, 200);
+      };
+      tick();
+    })();
+    return () => { stopped = true; clearTimeout(timer); if (stream) stream.getTracks().forEach((t) => t.stop()); };
+  }, []);
+  return html`
+    <div class="scan-bg" role="dialog" aria-modal="true" aria-label="QR kod okut">
+      <div class="scan">
+        <div class="scan-head"><b>Prova odası QR kodunu okut</b><button type="button" class="btn btn-sm btn-ghost" onClick=${onClose}>Kapat</button></div>
+        ${err ? html`<p class="form-err">${err}</p>` : html`
+          <div class="scan-view">
+            <video ref=${videoRef} muted playsinline autoplay></video>
+            <span class="scan-frame" aria-hidden="true"></span>
+            ${!ready ? html`<span class="scan-wait">Kamera açılıyor…</span>` : null}
+          </div>
+          <p class="muted small">QR kodu çerçevenin içine getir. Okununca giriş/çıkış ekranı kendiliğinden açılır.</p>`}
+      </div>
+    </div>`;
+}

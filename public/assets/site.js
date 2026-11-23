@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, QrScanner, yoklamaCode, timeTR
 } from './lib.js';
 
 const parseRoute = () => {
@@ -24,7 +24,7 @@ function Pill({ on, onClick, children, label }) {
 // ---------------------------------------------------------------------
 // Üst menü
 // ---------------------------------------------------------------------
-const NAV = [['', 'Ana Sayfa'], ['prova', 'Prova Odası'], ['kurslar', 'Enstrüman Kursları'], ['dinletiler', 'Dinletiler']];
+const NAV = [['', 'Ana Sayfa'], ['prova', 'Prova Odası'], ['kurslar', 'Enstrüman Kursları'], ['dinletiler', 'Dinletiler'], ['pazar', 'Müzisyen Pazarı']];
 
 function Header({ me, route }) {
   const [open, setOpen] = useState(false);
@@ -150,7 +150,7 @@ function Prova({ me }) {
 
   const load = useCallback(async () => {
     const [{ data: settings }, { data: slots }, { data: bookings }] = await Promise.all([
-      sb.from('settings').select('*').eq('id', 1).single(),
+      sb.from('settings').select('id,prova_open_days,prova_max_per_week,dinleti_open_days').eq('id', 1).single(),
       sb.from('prova_slots').select('*').eq('active', true).order('sort').order('start_time'),
       sb.from('prova_bookings').select('id,slot_id,day,user_id,display_name,status').in('day', fridays).neq('status', 'reddedildi')
     ]);
@@ -196,6 +196,7 @@ function Prova({ me }) {
         <h1 class="h page-h">Prova odası</h1>
         <p class="muted measure">Topluluğun her cuma prova odası hakkı var. Bir cumanın talepleri ${data.settings.prova_open_days === 4 ? html`o haftanın <b class="ink">pazartesi</b> günü` : html`<b class="ink">${data.settings.prova_open_days} gün önceden</b>`} açılır. Boş bir saate talep gönder; yönetim kurulu onaylayınca rezervasyonun kesinleşir. Her üye haftada en fazla ${data.settings.prova_max_per_week} saat alabilir.</p>
       </div>
+      ${me ? html`<${ScanCard} />` : null}
       <div class="row">
         ${weeks.map((x, i) => html`
           <button type="button" class=${'week ' + (i === week ? 'week-on' : '')} aria-pressed=${i === week} onClick=${() => setWeek(i)}>
@@ -399,7 +400,7 @@ function Dinletiler({ me }) {
 
   const load = useCallback(async () => {
     const [{ data: settings }, { data: list }] = await Promise.all([
-      sb.from('settings').select('*').eq('id', 1).single(),
+      sb.from('settings').select('id,prova_open_days,prova_max_per_week,dinleti_open_days').eq('id', 1).single(),
       sb.from('dinletiler').select('*').eq('active', true).gte('day', today).order('day').limit(6)
     ]);
     const ids = (list || []).map((d) => d.id);
@@ -559,7 +560,8 @@ function Giris({ me }) {
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  useEffect(() => { if (me) go('/'); }, [me]);
+  const next = () => { let n = null; try { n = sessionStorage.getItem('bumt_after_login'); sessionStorage.removeItem('bumt_after_login'); } catch (e) {} go(n || '/'); };
+  useEffect(() => { if (me) next(); }, [me]);
   const submit = async (e) => {
     e.preventDefault();
     setErr(''); setBusy(true);
@@ -567,7 +569,7 @@ function Giris({ me }) {
     setBusy(false);
     if (error) return setErr(errMsg(error));
     toast('Hoş geldin!');
-    go('/');
+    next();
   };
   return html`
     <div class="login-wrap">
@@ -738,6 +740,7 @@ function Profil({ me, refresh }) {
         <span class=${'tag ' + statusTag[0]}>${statusTag[1]}</span>
       </div>
 
+      <${ScanCard} />
       <div class="card pad stack">
         <h2 class="h2">Rezervasyonlarım</h2>
         ${!mine ? html`<${Loading} />` : (mine.pv.length + mine.ls.length + mine.dn.length) === 0 ? html`<p class="muted">Aktif rezervasyonun yok.</p>` : html`
@@ -832,6 +835,215 @@ function Egitmen({ me, refresh }) {
     </div>`;
 }
 
+// ---------------------------------------------------------------------
+// Prova yoklaması (QR)
+// ---------------------------------------------------------------------
+function ScanCard() {
+  const [open, setOpen] = useState(false);
+  const onResult = (text) => {
+    setOpen(false);
+    const code = yoklamaCode(text);
+    if (!code) return toast('Bu bir BÜMT prova odası QR kodu değil.', 'err');
+    go('/yoklama/' + code);
+  };
+  return html`
+    <div class="card pad row between scan-card">
+      <div class="stack-xs">
+        <b>Provaya geldin mi?</b>
+        <span class="muted small">Prova odasındaki QR kodu girerken ve çıkarken okut. Telefonunun kamera uygulamasıyla da okutabilirsin.</span>
+      </div>
+      <button type="button" class="btn btn-dark" onClick=${() => setOpen(true)}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>
+        QR okut
+      </button>
+      ${open ? html`<${QrScanner} onResult=${onResult} onClose=${() => setOpen(false)} />` : null}
+    </div>`;
+}
+
+function Yoklama({ code, me }) {
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState('');
+  const [key, setKey] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (me === undefined) return;
+    if (!me) {
+      try { sessionStorage.setItem('bumt_after_login', '/yoklama/' + code); } catch (e) {}
+      toast('Yoklama için önce giriş yap.');
+      go('/giris');
+      return;
+    }
+    setErr(''); setRes(null);
+    sb.rpc('prova_scan', { p_code: code }).then(({ data, error }) => { if (error) setErr(errMsg(error)); else setRes(data); });
+  }, [me && me.user.id, code]);
+
+  const checkout = async (e) => {
+    e.preventDefault();
+    if (!key) return toast('Çıkış için anahtarı bıraktığını onaylamalısın.', 'err');
+    setBusy(true);
+    const { data, error } = await sb.rpc('prova_checkout', { p_code: code, p_key_returned: key, p_note: note.trim() });
+    setBusy(false);
+    if (error) return toast(errMsg(error), 'err');
+    setRes(data);
+  };
+
+  const slot = res && res.start_time ? hhmm(res.start_time) + '–' + hhmm(res.end_time) : '';
+  return html`
+    <div class="card pad-lg stack narrow yoklama">
+      <span class="tag tag-dark self-start">Prova odası yoklaması</span>
+      ${err ? html`
+        <h1 class="h2">Kayıt yapılamadı</h1>
+        <p class="form-err">${err}</p>
+        <a class="btn btn-ghost self-start" href="#/prova">Prova odası sayfası</a>`
+      : !res ? html`<${Loading} />`
+      : res.state === 'checked_in' ? html`
+        <div class="big-ok" aria-hidden="true">✓</div>
+        <h1 class="h2">Giriş kaydedildi · ${timeTR(res.check_in_at)}</h1>
+        <p class="muted">Rezervasyonun: bugün ${slot}. İyi provalar! Çıkarken aynı QR kodu tekrar okutmayı unutma.</p>`
+      : res.state === 'needs_checkout' ? html`
+        <h1 class="h2">Çıkış yapıyorsun</h1>
+        <p class="muted">Giriş saatin: <b class="ink">${timeTR(res.check_in_at)}</b> · Rezervasyonun: ${slot}</p>
+        <form class="stack" onSubmit=${checkout}>
+          <label class="check check-top key-check"><input type="checkbox" checked=${key} onChange=${(e) => setKey(e.target.checked)} /><span><b>Anahtarı bıraktım / teslim ettim.</b></span></label>
+          <label class="lbl"><span>Not (isteğe bağlı)</span><textarea class="inp" rows="2" maxlength="300" value=${note} onInput=${(e) => setNote(e.target.value)} placeholder="Örn. Anahtarı güvenlik görevlisine bıraktım. Odada bir sorun varsa buraya yaz."></textarea></label>
+          <button type="submit" class="btn btn-red self-start" disabled=${busy || !key}>Çıkışı kaydet</button>
+        </form>`
+      : html`
+        <div class="big-ok" aria-hidden="true">✓</div>
+        <h1 class="h2">Çıkış kaydedildi${res.check_out_at ? ' · ' + timeTR(res.check_out_at) : ''}</h1>
+        <p class="muted">Giriş: ${timeTR(res.check_in_at)} · Çıkış: ${timeTR(res.check_out_at)}. Teşekkürler, görüşmek üzere!</p>`}
+    </div>`;
+}
+
+// ---------------------------------------------------------------------
+// Müzisyen pazarı
+// ---------------------------------------------------------------------
+const POST_KINDS = ['Grup kuruyorum', 'Gruba katılmak istiyorum', 'Müzisyen arıyorum', 'Diğer'];
+
+function Pazar({ me }) {
+  const [posts, setPosts] = useState(null);
+  const [filter, setFilter] = useState('Tümü');
+  const [form, setForm] = useState(null);
+  const [contacts, setContacts] = useState({});
+  const uid = me && me.user.id;
+  const approved = me && me.profile && me.profile.status === 'onaylandi';
+  const isMusician = me && me.profile && me.profile.member_type === 'muzisyen';
+  const canModerate = me && me.can && me.can('uyeler');
+
+  const load = useCallback(async () => {
+    const { data, error } = await sb.from('market_posts').select('*').eq('active', true).order('created_at', { ascending: false });
+    if (error) toast(errMsg(error), 'err');
+    setPosts(data || []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  if (!posts) return html`<${Loading} />`;
+
+  const roles = ['Tümü', ...Array.from(new Set(posts.flatMap((p) => p.looking_for || [])))];
+  const shown = posts.filter((p) => filter === 'Tümü' || (p.looking_for || []).includes(filter));
+
+  const newPost = () => {
+    if (!me) return go('/giris');
+    if (!approved) return toast('İlan vermek için üyeliğinin onaylanması gerekiyor.', 'err');
+    if (!isMusician) return toast('İlanı müzisyen üyeler verebilir. Profilinden "Müzisyen" seçebilirsin.', 'err');
+    setForm({ kind: POST_KINDS[0], title: '', my_role: (me.profile.instruments || []).join(', '), looking_for: [], genre: '', description: '' });
+    setTimeout(() => { const el = document.getElementById('ilan-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+  };
+  const save = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim()) return toast('İlana bir başlık yaz.', 'err');
+    const row = { kind: form.kind, title: form.title.trim(), my_role: form.my_role.trim(), looking_for: form.looking_for, genre: form.genre.trim(), description: form.description.trim() };
+    const { error } = form.id ? await sb.from('market_posts').update(row).eq('id', form.id) : await sb.from('market_posts').insert(row);
+    if (error) return toast(errMsg(error), 'err');
+    toast(form.id ? 'İlanın güncellendi.' : 'İlanın yayında!');
+    setForm(null);
+    load();
+  };
+  const close = async (p, moderate) => {
+    if (!confirm(moderate ? 'Bu ilan kaldırılsın mı?' : 'İlanını kapatmak istiyor musun? Artık listede görünmez.')) return;
+    const { error } = await sb.from('market_posts').update({ active: false }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('İlan kaldırıldı.');
+    load();
+  };
+  const showContact = async (p) => {
+    const { data, error } = await sb.rpc('market_contact', { p_post: p.id });
+    if (error) return toast(errMsg(error), 'err');
+    setContacts({ ...contacts, [p.id]: data || '' });
+  };
+  const toggleRole = (r) => setForm({ ...form, looking_for: form.looking_for.includes(r) ? form.looking_for.filter((x) => x !== r) : [...form.looking_for, r] });
+
+  return html`
+    <div class="stack-lg">
+      <div class="row between">
+        <div class="stack">
+          <h1 class="h page-h">Müzisyen pazarı</h1>
+          <p class="muted measure">Grup mu kuruyorsun, gruba mı katılmak istiyorsun? İlanını ver, aradığın müzisyenleri bul. İletişim bilgileri sadece onaylı üyelere görünür.</p>
+        </div>
+        <button type="button" class="btn btn-red" onClick=${newPost}>+ İlan ver</button>
+      </div>
+
+      ${form ? html`
+        <form id="ilan-form" class="card pad-lg stack" onSubmit=${save}>
+          <h2 class="h2">${form.id ? 'İlanı düzenle' : 'Yeni ilan'}</h2>
+          <fieldset class="fs"><legend>İlan türü</legend>
+            <div class="row">${POST_KINDS.map((k) => html`<${Pill} on=${form.kind === k} onClick=${() => setForm({ ...form, kind: k })}>${k}<//>`)}</div>
+          </fieldset>
+          <div class="fgrid">
+            <${Field} label="Başlık"><input class="inp" required maxlength="80" value=${form.title} onInput=${(e) => setForm({ ...form, title: e.target.value })} placeholder="Örn. Alternatif rock grubu kuruyoruz" /><//>
+            <${Field} label="Ben…" hint="Ne çalıyor / söylüyorsun?"><input class="inp" maxlength="80" value=${form.my_role} onInput=${(e) => setForm({ ...form, my_role: e.target.value })} placeholder="Vokal" /><//>
+            <${Field} label="Tarz (isteğe bağlı)"><input class="inp" maxlength="80" value=${form.genre} onInput=${(e) => setForm({ ...form, genre: e.target.value })} placeholder="Rock, caz, Türkçe pop…" /><//>
+          </div>
+          <fieldset class="fs"><legend>Aradığın müzisyenler</legend>
+            <div class="row">${INSTRUMENTS.map((r) => html`<${Pill} on=${form.looking_for.includes(r)} onClick=${() => toggleRole(r)}>${r}<//>`)}</div>
+          </fieldset>
+          <${Field} label="Açıklama"><textarea class="inp" rows="4" maxlength="1000" value=${form.description} onInput=${(e) => setForm({ ...form, description: e.target.value })} placeholder="Ne tür müzik yapmak istiyorsun, ne sıklıkla prova, hedefin ne (konser, eğlence, kayıt)…"></textarea><//>
+          <div class="row">
+            <button type="submit" class="btn btn-red">${form.id ? 'Kaydet' : 'İlanı yayınla'}</button>
+            <button type="button" class="btn btn-ghost" onClick=${() => setForm(null)}>Vazgeç</button>
+          </div>
+        </form>` : null}
+
+      ${posts.length > 0 ? html`
+        <div class="row" role="group" aria-label="Aranan role göre filtrele">
+          <span class="strong small">Aranan:</span>
+          ${roles.map((r) => html`<${Pill} on=${filter === r} onClick=${() => setFilter(r)}>${r}<//>`)}
+        </div>` : null}
+
+      ${shown.length === 0 ? html`<div class="locked"><h2 class="h2">Henüz ilan yok</h2><p class="muted">İlk ilanı sen ver!</p></div>` : html`
+        <div class="cards">
+          ${shown.map((p) => {
+            const phone = contacts[p.id];
+            const mine = p.user_id === uid;
+            return html`
+              <article class="card pad stack post">
+                <div class="row between"><span class="tag tag-red">${p.kind}</span><span class="muted small">${fmtShort(String(p.created_at).slice(0, 10))}</span></div>
+                <h3 class="post-title">${p.title}</h3>
+                <span class="small"><b>${p.display_name}</b>${p.my_role ? ' · ' + p.my_role : ''}${p.genre ? ' · ' + p.genre : ''}</span>
+                ${(p.looking_for || []).length ? html`
+                  <div class="stack-xs"><span class="muted small strong">Aranıyor</span>
+                    <div class="row-sm">${p.looking_for.map((r) => html`<span class="tag tag-cream">${r}</span>`)}</div>
+                  </div>` : null}
+                ${p.description ? html`<p class="post-desc">${p.description}</p>` : null}
+                <div class="row post-actions">
+                  ${mine ? html`
+                    <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setForm({ ...p })}>Düzenle</button>
+                    <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>İlanı kapat</button>`
+                  : !me ? html`<a class="btn btn-sm btn-ghost" href="#/giris">İletişim için giriş yap</a>`
+                  : !approved ? html`<span class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</span>`
+                  : phone === undefined ? html`<button type="button" class="btn btn-sm btn-dark" onClick=${() => showContact(p)}>İletişim bilgisini göster</button>`
+                  : phone ? html`
+                    <a class="btn btn-sm btn-wa" href=${waLink(phone, 'Merhaba, BÜMT Müzisyen Pazarı\'ndaki "' + p.title + '" ilanın için yazıyorum.')} target="_blank" rel="noopener">WhatsApp'tan yaz</a>
+                    <a class="btn btn-sm btn-ghost" href=${'tel:' + phone}>${phone}</a>`
+                  : html`<span class="muted small">Bu üye telefon numarası eklememiş.</span>`}
+                  ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
+                </div>
+              </article>`;
+          })}
+        </div>`}
+    </div>`;
+}
+
 function Kvkk() {
   return html`
     <div class="card pad-lg stack narrow prose">
@@ -871,12 +1083,14 @@ function App() {
   else if (p === 'profil') page = html`<${Profil} me=${me} refresh=${refresh} />`;
   else if (p === 'egitmen') page = html`<${Egitmen} me=${me} refresh=${refresh} />`;
   else if (p === 'kvkk') page = html`<${Kvkk} />`;
+  else if (p === 'pazar') page = html`<${Pazar} me=${me} />`;
+  else if (p === 'yoklama') page = html`<${Yoklama} code=${route.param} me=${me} />`;
   else page = html`<div class="stack"><h1 class="h page-h">Sayfa bulunamadı</h1><a class="btn btn-ghost self-start" href="#/">Ana sayfa</a></div>`;
 
   return html`
     <${Header} me=${me} route=${route} />
     <${StatusBanner} me=${me} />
-    <main class="wrap main" id="icerik">${me === undefined && ['prova', 'kurslar', 'dinletiler', 'profil', 'egitmen'].includes(p) ? html`<${Loading} />` : page}</main>
+    <main class="wrap main" id="icerik">${me === undefined && ['prova', 'kurslar', 'dinletiler', 'profil', 'egitmen', 'pazar', 'yoklama'].includes(p) ? html`<${Loading} />` : page}</main>
     <footer class="ftr">
       <div class="wrap ftr-in">
         <div class="row nowrap"><span class="ftr-logo"><img src="/assets/logo.png" alt="" /></span><b>Başkent Üniversitesi Müzik Topluluğu</b></div>

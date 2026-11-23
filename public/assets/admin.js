@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, staffEmail, errMsg, toast, Toaster, adminApi, PERMS,
   todayStr, fmtLong, fmtShort, fmtDateTime, hhmm, addMinutes, nextFridays, DAY_NAMES,
-  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, waLink
+  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, waLink, timeTR
 } from './lib.js';
 
 const parseRoute = () => (location.hash.replace(/^#\/?/, '') || '').split('/')[0] || '';
@@ -511,7 +511,7 @@ function ProvaAdmin() {
 
   const load = useCallback(async () => {
     const [{ data: s }, { data: sl }, { data: r, error }] = await Promise.all([
-      sb.from('settings').select('*').eq('id', 1).single(),
+      sb.from('settings').select('id,prova_open_days,prova_max_per_week,dinleti_open_days').eq('id', 1).single(),
       sb.from('prova_slots').select('*').order('sort').order('start_time'),
       sb.rpc('prova_requests', { p_from: todayStr() })
     ]);
@@ -614,6 +614,9 @@ function ProvaAdmin() {
           </table></div>`}
       </section>
 
+      <${AttendanceList} />
+      <${YoklamaQR} />
+
       <form class="panel pad stack" onSubmit=${saveSettings}>
         <h2 class="h2">Talep kuralları</h2>
         <div class="fgrid">
@@ -646,6 +649,92 @@ function ProvaAdmin() {
         <button type="button" class="btn btn-ghost self-start" onClick=${() => setSlots([...slots, { start_time: '18:00', end_time: '19:00', sort: slots.length + 1, active: true, dirty: true }])}>+ Saat ekle</button>
       </section>
     </div>`;
+}
+
+function YoklamaQR() {
+  const [code, setCode] = useState(null);
+  const [img, setImg] = useState('');
+  const load = useCallback(async () => {
+    const { data, error } = await sb.rpc('prova_qr_code');
+    if (error) return toast(errMsg(error), 'err');
+    setCode(data);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const url = code ? location.origin + '/#/yoklama/' + code : '';
+  useEffect(() => {
+    if (!url) return;
+    import('https://esm.sh/qrcode@1.5.4').then((m) => (m.default || m).toDataURL(url, { width: 640, margin: 2, errorCorrectionLevel: 'M' })).then(setImg).catch(() => toast('QR görseli oluşturulamadı.', 'err'));
+  }, [url]);
+  const reset = async () => {
+    if (!confirm('Yeni bir QR kod oluşturulsun mu? Eski QR artık çalışmaz; prova odasındaki kağıdı yenisiyle değiştirmen gerekir.')) return;
+    const { data, error } = await sb.rpc('prova_qr_reset');
+    if (error) return toast(errMsg(error), 'err');
+    setCode(data);
+    toast('Yeni QR kod oluşturuldu. Yazdırıp odadakini değiştir.');
+  };
+  const print = () => {
+    const w = window.open('', '_blank');
+    if (!w) return toast('Açılır pencereye izin ver.', 'err');
+    w.document.write('<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>BÜMT Prova Odası QR</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:40px">' +
+      '<h1 style="font-size:40px;margin:0 0 8px">BÜMT PROVA ODASI</h1><p style="font-size:22px;margin:0 0 24px">Girişte ve çıkışta bu kodu okut</p>' +
+      '<img src="' + img + '" style="width:420px;height:420px"><p style="font-size:18px;margin-top:24px">Telefonunun kamerasıyla okut ya da sitede <b>Prova Odası → QR okut</b></p>' +
+      '<p style="font-size:14px;color:#555">Çıkarken anahtarı bıraktığını onaylamayı unutma.</p><script>window.onload=function(){window.print()}<\/script></body></html>');
+    w.document.close();
+  };
+  return html`
+    <section class="panel pad stack">
+      <h2 class="h2">Yoklama QR kodu</h2>
+      <p class="muted small">Bu kodu yazdırıp prova odasına as. Onaylı rezervasyonu olan üye girerken ve çıkarken okutur; çıkışta anahtarı bıraktığını onaylar.</p>
+      ${!code ? html`<${Loading} />` : html`
+        <div class="row align-start">
+          <div class="qr-box">${img ? html`<img src=${img} alt="Prova odası yoklama QR kodu" />` : html`<span class="muted small">Hazırlanıyor…</span>`}</div>
+          <div class="stack">
+            <span class="sub">QR içindeki adres:</span>
+            <code class="qr-url">${url}</code>
+            <span class="sub">QR'ı asıl alan adından (bumt.com.tr) açıp yazdırmanı öneririm; o zaman kod o adrese gider.</span>
+            <div class="row">
+              <button type="button" class="btn btn-red" disabled=${!img} onClick=${print}>Yazdır</button>
+              <button type="button" class="btn btn-ghost" onClick=${reset}>Yeni kod oluştur</button>
+            </div>
+          </div>
+        </div>`}
+    </section>`;
+}
+
+function AttendanceList() {
+  const [rows, setRows] = useState(null);
+  const today = todayStr();
+  useEffect(() => {
+    const from = addDaysLocal(today, -30);
+    sb.rpc('prova_attendance_list', { p_from: from, p_to: today }).then(({ data, error }) => {
+      if (error) toast(errMsg(error), 'err');
+      setRows(data || []);
+    });
+  }, []);
+  const state = (r) => {
+    if (r.check_out_at) return ['badge-ok', 'Tamam'];
+    if (r.check_in_at) return ['badge-wait', r.day < today ? 'Çıkış okutulmadı' : 'İçeride'];
+    return r.day < today ? ['badge-red', 'Gelmedi'] : ['badge-no', 'Bekleniyor'];
+  };
+  const exp = () => downloadCSV('prova-yoklama.csv', [['Tarih', 'Saat', 'Üye', 'Öğrenci no', 'Giriş', 'Çıkış', 'Anahtar bırakıldı', 'Not'],
+    ...rows.map((r) => [r.day, hhmm(r.start_time) + '-' + hhmm(r.end_time), r.full_name, r.student_no, timeTR(r.check_in_at), timeTR(r.check_out_at), r.key_returned ? 'Evet' : '', r.key_note])]);
+  return html`
+    <section class="panel pad stack">
+      <div class="toolbar"><h2 class="h2">Yoklama kayıtları (son 30 gün)</h2>${rows && rows.length ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${exp}>CSV indir</button>` : null}</div>
+      ${!rows ? html`<${Loading} />` : rows.length === 0 ? html`<${Empty}>Son 30 günde onaylı prova yok.<//>` : html`
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr><th>Tarih</th><th>Saat</th><th>Üye</th><th>Giriş</th><th>Çıkış</th><th>Anahtar</th><th>Not</th><th>Durum</th></tr></thead>
+          <tbody>${rows.map((r) => { const st = state(r); return html`
+            <tr>
+              <td>${fmtShort(r.day)}</td><td>${hhmm(r.start_time)}–${hhmm(r.end_time)}</td>
+              <td><b>${r.full_name}</b><div class="sub mono">${r.student_no}</div></td>
+              <td>${timeTR(r.check_in_at) || '—'}</td><td>${timeTR(r.check_out_at) || '—'}</td>
+              <td>${r.key_returned ? 'Bırakıldı ✓' : '—'}</td>
+              <td class="sub">${r.key_note}</td>
+              <td><span class=${'badge ' + st[0]}>${st[1]}</span></td>
+            </tr>`; })}</tbody>
+        </table></div>`}
+    </section>`;
 }
 
 // ---------------------------------------------------------------------
@@ -781,7 +870,7 @@ function DinletiAdmin() {
     const [{ data: d }, { data: b }, { data: s }] = await Promise.all([
       sb.from('dinletiler').select('*').order('day'),
       sb.from('dinleti_bookings').select('dinleti_id'),
-      sb.from('settings').select('*').eq('id', 1).single()
+      sb.from('settings').select('id,prova_open_days,prova_max_per_week,dinleti_open_days').eq('id', 1).single()
     ]);
     const c = {};
     (b || []).forEach((x) => { c[x.dinleti_id] = (c[x.dinleti_id] || 0) + 1; });
