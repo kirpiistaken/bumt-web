@@ -378,6 +378,9 @@ grant usage on schema public to anon, authenticated;
 grant select on all tables in schema public to anon, authenticated;
 grant insert, update, delete on all tables in schema public to authenticated;
 grant insert on public.form_responses to anon;
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+grant execute on all functions in schema public to service_role;
 -- Eğitmen telefonları sadece giriş yapanlara görünür
 revoke select on public.instructors from anon;
 grant select (id, profile_id, full_name, instrument, kind, department, class_year, bio, active, created_at)
