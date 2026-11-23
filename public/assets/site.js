@@ -246,7 +246,7 @@ function Kurslar({ me }) {
   const [filter, setFilter] = useState('Tümü');
   const [selId, setSelId] = useState(null);
   const [picked, setPicked] = useState(null);
-  const [phone, setPhone] = useState('');
+  const [contacts, setContacts] = useState({});
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -259,11 +259,14 @@ function Kurslar({ me }) {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    setPhone('');
-    if (!selId || !me) return;
-    sb.from('instructors').select('phone').eq('id', selId).maybeSingle().then(({ data: d }) => setPhone((d && d.phone) || ''));
-  }, [selId, me && me.user.id]);
+  const approvedMember = me && me.profile && me.profile.status === 'onaylandi';
+  const loadContact = async (id) => {
+    if (contacts[id] !== undefined || !approvedMember) return;
+    const { data: ph, error } = await sb.rpc('instructor_contact', { p_instructor: id });
+    if (error) return toast(errMsg(error), 'err');
+    setContacts((c) => ({ ...c, [id]: ph || '' }));
+  };
+  useEffect(() => { if (selId) loadContact(selId); }, [selId, approvedMember]);
 
   if (!data) return html`<${Loading} />`;
   const instruments = ['Tümü', ...Array.from(new Set(data.ins.map((i) => i.instrument)))];
@@ -276,6 +279,17 @@ function Kurslar({ me }) {
   const mineAt = (id, d, h) => uid && data.bookings.find((b) => b.instructor_id === id && b.weekday === d && b.hour === h && b.user_id === uid);
   const freeCount = (id) => data.slots.filter((s) => s.instructor_id === id && !approvedAt(id, s.weekday, s.hour)).length;
   const open = (id) => { setSelId(id); setPicked(null); setTimeout(() => { const el = document.getElementById('takvim'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
+
+  const waText = (t) => 'Merhaba ' + t.full_name + ', BÜMT sitesinden ' + t.instrument + ' dersi için yazıyorum.';
+  const Contact = ({ t, small }) => {
+    const cls = 'btn ' + (small ? 'btn-sm ' : '');
+    if (!me) return html`<a class=${cls + 'btn-ghost'} href="#/giris">İletişim için giriş yap</a>`;
+    if (!approvedMember) return html`<span class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</span>`;
+    const ph = contacts[t.id];
+    if (ph === undefined) return html`<button type="button" class=${cls + 'btn-wa'} onClick=${() => loadContact(t.id)}>WhatsApp'tan yaz</button>`;
+    if (!ph) return html`<span class="muted small">Eğitmen henüz telefon eklememiş.</span>`;
+    return html`<a class=${cls + 'btn-wa'} href=${waLink(ph, waText(t))} target="_blank" rel="noopener">WhatsApp'tan yaz</a><a class=${cls + 'btn-ghost'} href=${'tel:' + ph}>${ph}</a>`;
+  };
 
   let grid = null;
   if (sel) {
@@ -329,7 +343,10 @@ function Kurslar({ me }) {
                 <div class="row-sm"><span class="tag tag-dark">${t.instrument}</span><span class="tag tag-cream">${t.kind}</span></div>
                 ${t.bio ? html`<p class="muted small">${t.bio}</p>` : null}
                 <span class="small strong">${n > 0 ? n + ' boş saat' : 'Şu an boş saat yok'}</span>
-                <button type="button" class="btn btn-ghost self-start" onClick=${() => open(t.id)}>Takvimi gör</button>
+                <div class="row">
+                  <button type="button" class="btn btn-sm btn-dark" onClick=${() => open(t.id)}>Takvimi gör</button>
+                  <${Contact} t=${t} small=${true} />
+                </div>
               </div>`;
           })}
         </div>`}
@@ -343,8 +360,7 @@ function Kurslar({ me }) {
               <span class="muted small">${[sel.kind, sel.department, sel.class_year].filter(Boolean).join(' · ')}</span>
             </div>
             <div class="row">
-              ${me ? (phone ? html`<a class="btn btn-red" href=${waLink(phone, 'Merhaba, BÜMT sitesinden ' + sel.instrument + ' dersi için yazıyorum.')} target="_blank" rel="noopener">WhatsApp'tan yaz</a>` : null)
-                : html`<a class="btn btn-ghost" href="#/giris">İletişim için giriş yap</a>`}
+              <${Contact} t=${sel} />
               <button type="button" class="btn btn-ghost" onClick=${() => setSelId(null)}>Kapat</button>
             </div>
           </div>
