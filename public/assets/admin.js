@@ -982,6 +982,7 @@ function DinletiEdit({ d, onClose, onSaved }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const save = async (e) => {
     e.preventDefault();
+    if (f.day < todayStr() && !confirm('Seçtiğin tarih geçmişte. Kaydedersen dinleti listede gizlenir ("Geçmiş dinletileri de göster" ile görünür). Devam edilsin mi?')) return;
     const row = { ...f, slot_minutes: +f.slot_minutes, slot_count: +f.slot_count };
     const { error } = d.id ? await sb.from('dinletiler').update(row).eq('id', d.id) : await sb.from('dinletiler').insert(row);
     if (error) return toast(errMsg(error), 'err');
@@ -999,7 +1000,7 @@ function DinletiEdit({ d, onClose, onSaved }) {
       <form class="stack" onSubmit=${save}>
         <div class="fgrid">
           <${Field} label="Başlık"><input class="inp" required value=${f.title} onInput=${set('title')} /><//>
-          <${Field} label="Tarih"><input class="inp" type="date" required value=${f.day} onInput=${set('day')} /><//>
+          <${Field} label="Tarih"><input class="inp" type="date" required min=${todayStr()} value=${f.day} onInput=${set('day')} /><//>
           <${Field} label="Başlangıç saati"><input class="inp" type="time" required value=${f.start_time} onInput=${set('start_time')} /><//>
           <${Field} label="Yer"><input class="inp" value=${f.venue} onInput=${set('venue')} /><//>
           <${Field} label="Performans süresi (dk)"><input class="inp" type="number" min="5" max="180" value=${f.slot_minutes} onInput=${set('slot_minutes')} /><//>
