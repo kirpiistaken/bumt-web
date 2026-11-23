@@ -1,7 +1,7 @@
 // Yönetim işlemleri: hesap oluşturma, şifre sıfırlama, hesap silme.
 // Gizli anahtar (SUPABASE_SECRET_KEY) sadece burada, sunucuda kullanılır.
 
-const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SB_URL = (process.env.SUPABASE_URL || '').trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
 const SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 function send(res, code, body) {

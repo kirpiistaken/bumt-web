@@ -1,6 +1,6 @@
 // Tarayıcıya sadece herkese açık (publishable/anon) anahtarı verir.
 module.exports = (req, res) => {
-  const url = process.env.SUPABASE_URL || '';
+  const url = (process.env.SUPABASE_URL || '').trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
   const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '';
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
