@@ -663,7 +663,7 @@ function Giris({ me }) {
         ${err ? html`<p class="form-err" role="alert">${err}</p>` : null}
         <button type="submit" class="btn btn-red" disabled=${busy}>${busy ? 'Giriş yapılıyor…' : 'Giriş yap'}</button>
         <p class="small">Hesabın yok mu? <a href="#/kayit">Üye ol</a></p>
-        <p class="muted small">Şifreni unuttuysan yönetim kuruluna yaz; şifreni sıfırlayabilirler.</p>
+        <p class="small"><a href="#/sifre">Şifremi unuttum</a></p>
       </form>
       <aside class="admin-entry">
         <span class="h admin-entry-h">Yönetim</span>
@@ -727,7 +727,7 @@ function Kayit({ me }) {
           <${Field} label="Ad Soyad"><input class="inp" required autocomplete="name" value=${f.full_name} onInput=${set('full_name')} /><//>
           <${Field} label="Öğrenci numarası" hint="Giriş yaparken bunu kullanacaksın"><input class="inp" required inputmode="numeric" value=${f.student_no} onInput=${set('student_no')} /><//>
           <${Field} label="Telefon (WhatsApp)"><input class="inp" type="tel" required autocomplete="tel" value=${f.phone} onInput=${set('phone')} placeholder="05xx xxx xx xx" /><//>
-          <${Field} label="E-posta (isteğe bağlı)"><input class="inp" type="email" autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
+          <${Field} label="E-posta" hint="Şifreni unutursan sıfırlama linki buraya gelir"><input class="inp" type="email" required autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
         </div>
@@ -875,7 +875,7 @@ function Profil({ me, refresh }) {
         <div class="fgrid">
           <${Field} label="Ad Soyad"><input class="inp" required value=${f.full_name} onInput=${set('full_name')} /><//>
           <${Field} label="Telefon (WhatsApp)"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>
-          <${Field} label="E-posta"><input class="inp" type="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
+          <${Field} label="E-posta" hint=${f.contact_email ? 'Şifre sıfırlama linki buraya gelir' : 'E-posta eklemezsen şifreni unuttuğunda sıfırlayamazsın'}><input class="inp" type="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
         </div>
@@ -1194,6 +1194,73 @@ function Uye({ id, me }) {
     </div>`;
 }
 
+function SifreUnuttum() {
+  const [ident, setIdent] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const r = await fetch('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ident: ident.trim() }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Bir hata oluştu.');
+      setMsg(d.message);
+    } catch (err) { toast(errMsg(err), 'err'); }
+    setBusy(false);
+  };
+  return html`
+    <div class="card pad-lg stack narrow login-card" style="margin: 0 auto">
+      <h1 class="h page-h">Şifremi unuttum</h1>
+      ${msg ? html`
+        <p>${msg}</p>
+        <p class="muted small">Hesabına hiç e-posta eklemediysen link gelmez; o durumda yönetim kuruluna yaz.</p>
+        <a class="btn btn-ghost self-start" href="#/giris">Giriş sayfasına dön</a>` : html`
+        <p class="muted">Öğrenci numaranı yaz; hesabına kayıtlı e-posta adresine şifre sıfırlama linki gönderelim.</p>
+        <form class="stack" onSubmit=${submit}>
+          <${Field} label="Öğrenci numarası" hint="Yönetim hesabıysan kullanıcı adını yaz"><input class="inp" required autocomplete="username" value=${ident} onInput=${(e) => setIdent(e.target.value)} /><//>
+          <button type="submit" class="btn btn-red self-start" disabled=${busy}>${busy ? 'Gönderiliyor…' : 'Sıfırlama linki gönder'}</button>
+        </form>
+        <a class="small" href="#/giris">← Giriş sayfasına dön</a>`}
+    </div>`;
+}
+
+function SifreYenile({ token }) {
+  const [pw, setPw] = useState({ a: '', b: '' });
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState('');
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr('');
+    if (pw.a.length < 6) return setErr('Şifre en az 6 karakter olmalı.');
+    if (pw.a !== pw.b) return setErr('Şifreler aynı değil.');
+    setBusy(true);
+    try {
+      const r = await fetch('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset', token, password: pw.a }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Bir hata oluştu.');
+      try { await sb.auth.signOut(); } catch (x) {}
+      setDone(true);
+    } catch (e2) { setErr(errMsg(e2)); }
+    setBusy(false);
+  };
+  return html`
+    <div class="card pad-lg stack narrow login-card" style="margin: 0 auto">
+      <h1 class="h page-h">Yeni şifre</h1>
+      ${done ? html`
+        <p>Şifren değiştirildi. Artık yeni şifrenle giriş yapabilirsin.</p>
+        <a class="btn btn-red self-start" href="#/giris">Giriş yap</a>` : html`
+        <form class="stack" onSubmit=${submit}>
+          <${Field} label="Yeni şifre" hint="En az 6 karakter"><input class="inp" type="password" required autocomplete="new-password" value=${pw.a} onInput=${(e) => setPw({ ...pw, a: e.target.value })} /><//>
+          <${Field} label="Yeni şifre (tekrar)"><input class="inp" type="password" required autocomplete="new-password" value=${pw.b} onInput=${(e) => setPw({ ...pw, b: e.target.value })} /><//>
+          ${err ? html`<p class="form-err" role="alert">${err}</p>` : null}
+          <button type="submit" class="btn btn-red self-start" disabled=${busy}>${busy ? 'Kaydediliyor…' : 'Şifremi değiştir'}</button>
+        </form>
+        ${err && /link/i.test(err) ? html`<a class="small" href="#/sifre">Yeni sıfırlama linki iste</a>` : null}`}
+    </div>`;
+}
+
 function Kvkk() {
   return html`
     <div class="card pad-lg stack narrow prose">
@@ -1236,6 +1303,8 @@ function App() {
   else if (p === 'pazar') page = html`<${Pazar} me=${me} />`;
   else if (p === 'yoklama') page = html`<${Yoklama} code=${route.param} me=${me} />`;
   else if (p === 'uye') page = html`<${Uye} id=${route.param} me=${me} />`;
+  else if (p === 'sifre') page = html`<${SifreUnuttum} />`;
+  else if (p === 'sifre-yenile') page = html`<${SifreYenile} token=${route.param} />`;
   else page = html`<div class="stack"><h1 class="h page-h">Sayfa bulunamadı</h1><a class="btn btn-ghost self-start" href="#/">Ana sayfa</a></div>`;
 
   return html`

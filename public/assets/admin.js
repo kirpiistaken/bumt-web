@@ -63,6 +63,7 @@ function Login({ denied }) {
         ${err ? html`<p class="form-err" role="alert">${err}</p>` : null}
         <button type="submit" class="btn btn-red btn-block" disabled=${busy}>${busy ? 'Giriş yapılıyor…' : 'Giriş yap'}</button>
         <p class="small muted">Yönetim rolü verilmiş üyeler öğrenci numarasıyla da girebilir.</p>
+        <a class="small" href="/#/sifre">Şifremi unuttum</a>
         <a class="small" href="/#/giris">← Üye girişine dön</a>
       </form>
     </div>`;
@@ -295,7 +296,16 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
     toast('Üye güncellendi.');
     onSaved();
   };
+  const sendLink = async () => {
+    if (!m.contact_email) return toast('Bu üyenin e-postası yok. Önce e-posta ekle ya da elle şifre belirle.', 'err');
+    try {
+      const r = await fetch('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ident: m.student_no }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Gönderilemedi');
+      toast('Sıfırlama linki ' + m.contact_email + ' adresine gönderildi (son 2 dakikada gönderildiyse tekrar gitmez).');
+    } catch (err) { toast(err.message, 'err'); }
+  };
   const resetPw = async () => {
+    if (m.contact_email && !confirm('Üyenin e-postası var; şifreyi senin belirlemen yerine "Sıfırlama linki gönder" daha güvenli. Yine de elle yeni şifre belirlemek istiyor musun?')) return;
     const pw = prompt('Yeni şifre (en az 6 karakter). Üyeye bu şifreyi ilet:', randomPw());
     if (!pw) return;
     try { await adminApi('set_password', { user_id: m.id, password: pw }); toast('Şifre değiştirildi: ' + pw); } catch (err) { toast(err.message, 'err'); }
@@ -318,7 +328,8 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
               <option value="">Rol yok (normal üye)</option>${roles.map((r) => html`<option value=${r.id}>${r.name}</option>`)}</select><//>` : null}
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" onClick=${resetPw}>Şifre sıfırla</button>
+          <button type="button" class="btn btn-ghost" onClick=${sendLink}>Sıfırlama linki gönder</button>
+          <button type="button" class="btn btn-ghost" onClick=${resetPw}>Elle şifre belirle</button>
           <button type="button" class="btn btn-danger" onClick=${remove}>Hesabı sil</button>
           <span class="grow"></span>
           <button type="submit" class="btn btn-red" disabled=${busy}>Kaydet</button>
