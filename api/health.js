@@ -21,6 +21,10 @@ module.exports = async (req, res) => {
   if (SB_URL && SECRET) {
     const p = await sb('/rest/v1/profiles?select=id&limit=1000');
     out.profiles_okuma = p.ok ? ('ok, ' + (Array.isArray(p.data) ? p.data.length : '?') + ' profil') : ('hata ' + p.status + ': ' + JSON.stringify(p.data).slice(0, 160));
+    const chk = async (path) => { const r = await sb(path); return r.ok ? 'kurulu' : 'EKSİK'; };
+    out.sql_002_ders_talepleri = await chk('/rest/v1/lesson_bookings?select=status&limit=1');
+    out.sql_004_prova_talepleri = await chk('/rest/v1/prova_bookings?select=status&limit=1');
+    out.sql_005_pazar_yoklama = await chk('/rest/v1/market_posts?select=id&limit=1');
     const a = await sb('/auth/v1/admin/users?per_page=1');
     out.auth_admin = a.ok ? 'ok' : ('hata ' + a.status + ': ' + JSON.stringify(a.data).slice(0, 160));
   }
