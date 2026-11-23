@@ -1393,7 +1393,7 @@ function NoAccess() {
 }
 
 initSupabase()
-  .then(() => render(html`<${AdminApp} />`, document.getElementById('app')))
+  .then(() => { const el = document.getElementById('app'); el.textContent = ''; render(html`<${AdminApp} />`, el); })
   .catch((e) => {
     document.getElementById('app').innerHTML = '<div style="padding:40px;font-family:sans-serif;color:#fff">Panel ayarları yüklenemedi: ' + String(e.message || e).replace(/</g, '&lt;') + '</div>';
   });

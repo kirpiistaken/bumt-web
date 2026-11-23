@@ -1322,7 +1322,7 @@ function App() {
 }
 
 initSupabase()
-  .then(() => render(html`<${App} />`, document.getElementById('app')))
+  .then(() => { const el = document.getElementById('app'); el.textContent = ''; render(html`<${App} />`, el); })
   .catch((e) => {
     document.getElementById('app').innerHTML = '<div style="padding:40px;font-family:sans-serif">Site ayarları yüklenemedi: ' + String(e.message || e).replace(/</g, '&lt;') + '</div>';
   });
