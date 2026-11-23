@@ -20,7 +20,9 @@ async function readBody(req) {
 
 async function getProfile(id) {
   const p = await admin('/rest/v1/profiles?select=id,is_super,is_staff&id=eq.' + encodeURIComponent(id));
-  return p.ok && Array.isArray(p.data) ? p.data[0] : null;
+  if (!p.ok) return { error: 'Sunucu veritabanını okuyamadı (' + p.status + '). Vercel\'deki SUPABASE_SECRET_KEY değerini kontrol et; /api/health adresinden durumu görebilirsin.' };
+  const row = Array.isArray(p.data) ? p.data[0] : null;
+  return row || { error: 'Hesap bulunamadı. Sunucu anahtarı yanlış olabilir; /api/health adresini kontrol et.' };
 }
 
 function errText(r) {
@@ -89,7 +91,7 @@ module.exports = async (req, res) => {
 
   if (action === 'set_password' || action === 'delete_user') {
     const target = await getProfile(body.user_id);
-    if (!target) return send(res, 404, { error: 'Hesap bulunamadı.' });
+    if (target.error) return send(res, 404, { error: target.error });
     const need = target.is_staff ? 'roller' : 'uyeler';
     if (!caller.can(need)) return send(res, 403, { error: 'Bu işlem için yetkin yok.' });
     if (target.is_super && !caller.isSuper) return send(res, 403, { error: 'Süper yönetici hesabına dokunulamaz.' });
