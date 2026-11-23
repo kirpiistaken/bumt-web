@@ -244,8 +244,36 @@ textarea.inp { resize: vertical; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff; border: 2px solid var(--red); border-radius: 12px; padding: 14px 20px; font-weight: 600; max-width: calc(100% - 32px); box-shadow: 4px 4px 0 var(--red); z-index: 50; }
 .toast-err { background: #9E2116; border-color: var(--ink); box-shadow: 4px 4px 0 var(--ink); }
 
+/* Alt menü (sadece telefonda) */
+.bnav { display: none; }
+
+@media (max-width: 860px) {
+  .nav { display: none; }
+  .bnav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    background: var(--ink); border-top: 2px solid var(--red); padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); }
+  .bnav-a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; border-radius: 12px;
+    color: #CFC6B4; text-decoration: none; font-size: 11px; font-weight: 600; letter-spacing: .01em; }
+  .bnav-a:hover { color: #fff; }
+  .bnav-on, .bnav-on:hover { color: #fff; background: var(--red); }
+  .main { padding-top: 24px; padding-bottom: 120px; }
+  .ftr-in { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .hdr { position: sticky; top: 0; z-index: 30; }
+  .hdr-in { flex-wrap: nowrap; padding-top: 10px; padding-bottom: 10px; }
+  .brand-logo { width: 44px; height: 44px; }
+  .brand-logo img { width: 40px; height: 40px; }
+  .brand-txt b { font-size: 22px; }
+  .menu-name { display: none; }
+  .menu-btn { padding: 0 6px; min-width: 44px; }
+  .sec-head h2 { font-size: 30px; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -20px; padding: 2px 20px 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips > * { flex: none; }
+  .cards { gap: 20px; }
+  .card { box-shadow: 4px 4px 0 var(--ink); }
+}
+
 @media (max-width: 720px) {
-  .nav { order: 3; flex-basis: 100%; justify-content: flex-start; }
   .brand-txt small { display: none; }
   .pad-lg { padding: 20px; }
   .hero { padding: 92px 18px 36px; border-radius: 18px; }

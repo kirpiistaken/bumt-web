@@ -48,7 +48,7 @@ function Header({ me, route }) {
             <div class="menu">
               <button type="button" class="btn btn-cream btn-sm menu-btn" aria-expanded=${open} onClick=${() => setOpen(!open)}>
                 <${Avatar} url=${me.profile && me.profile.avatar_url} name=${name} size=${28} />
-                ${name}
+                <span class="menu-name">${name}</span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               ${open ? html`
@@ -63,6 +63,26 @@ function Header({ me, route }) {
         </div>
       </div>
     </header>`;
+}
+
+const ICON = {
+  home: 'M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  prova: 'M4 21h16M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M14 12h.01',
+  kurslar: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
+  dinletiler: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3M19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
+  pazar: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8'
+};
+const BNAV = [['', 'Ana Sayfa', 'home'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler'], ['pazar', 'Pazar', 'pazar']];
+
+function BottomNav({ route }) {
+  return html`
+    <nav class="bnav" aria-label="Alt menü">
+      ${BNAV.map(([p, l, ic]) => html`
+        <a href=${'#/' + p} class=${'bnav-a ' + (route.page === p ? 'bnav-on' : '')} aria-current=${route.page === p ? 'page' : null}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${ICON[ic]} /></svg>
+          <span>${l}</span>
+        </a>`)}
+    </nav>`;
 }
 
 function StatusBanner({ me }) {
@@ -198,7 +218,7 @@ function Prova({ me }) {
         <p class="muted measure">Topluluğun her cuma prova odası hakkı var. Bir cumanın talepleri ${data.settings.prova_open_days === 4 ? html`o haftanın <b class="ink">pazartesi</b> günü` : html`<b class="ink">${data.settings.prova_open_days} gün önceden</b>`} açılır. Boş bir saate talep gönder; yönetim kurulu onaylayınca rezervasyonun kesinleşir. Her üye haftada en fazla ${data.settings.prova_max_per_week} saat alabilir.</p>
       </div>
       ${me ? html`<${ScanCard} />` : null}
-      <div class="row">
+      <div class="row chips">
         ${weeks.map((x, i) => html`
           <button type="button" class=${'week ' + (i === week ? 'week-on' : '')} aria-pressed=${i === week} onClick=${() => setWeek(i)}>
             <b>${fmtShort(x.f)} Cuma</b>
@@ -329,7 +349,7 @@ function Kurslar({ me }) {
         <p class="muted measure">Hocalarımız, ders veren ve gönüllü öğrencilerimiz müsait saatlerini kendileri işaretler. Bir eğitmen seç, takviminden boş bir saate talep gönder; eğitmen onaylayınca ders senin.</p>
       </div>
       ${data.ins.length === 0 ? html`<p class="muted">Henüz eğitmen eklenmedi.</p>` : html`
-        <div class="row" role="group" aria-label="Enstrümana göre filtrele">
+        <div class="row chips" role="group" aria-label="Enstrümana göre filtrele">
           ${instruments.map((i) => html`<${Pill} on=${filter === i} onClick=${() => setFilter(i)}>${i}<//>`)}
         </div>
         <div class="cards">
@@ -1105,7 +1125,7 @@ function Pazar({ me }) {
         </form>` : null}
 
       ${posts.length > 0 ? html`
-        <div class="row" role="group" aria-label="Aranan role göre filtrele">
+        <div class="row chips" role="group" aria-label="Aranan role göre filtrele">
           <span class="strong small">Aranan:</span>
           ${roles.map((r) => html`<${Pill} on=${filter === r} onClick=${() => setFilter(r)}>${r}<//>`)}
         </div>` : null}
@@ -1228,6 +1248,7 @@ function App() {
         <div class="row small"><a href="#/kvkk">KVKK</a><a href="/yonetim/">Yönetim</a></div>
       </div>
     </footer>
+    <${BottomNav} route=${route} />
     <${Toaster} />`;
 }
 
