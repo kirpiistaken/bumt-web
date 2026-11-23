@@ -5,7 +5,7 @@ Başkent Üniversitesi Müzik Topluluğu sitesi: üyelik, prova odası, enstrüm
 - **Site:** `public/index.html` + `public/assets/site.js`
 - **Yönetim paneli:** `public/yonetim/` + `public/assets/admin.js`
 - **Sunucu fonksiyonları (Vercel):** `api/config.js`, `api/admin.js`
-- **Veritabanı:** `supabase/schema.sql`, ardından `supabase/002_ders_talepleri.sql` , `supabase/003_sunucu_yetkileri.sql`, `supabase/004_prova_talepleri.sql`, `supabase/005_pazar_ve_yoklama.sql` , `supabase/006_dinleti_basvurulari.sql`, `007_ekipman_metni.sql` ve `008_egitmen_iletisim.sql` (Supabase SQL Editor'de sırayla, birer kez)
+- **Veritabanı:** `supabase/schema.sql`, ardından `supabase/002_ders_talepleri.sql` , `supabase/003_sunucu_yetkileri.sql`, `supabase/004_prova_talepleri.sql`, `supabase/005_pazar_ve_yoklama.sql` , `supabase/006_dinleti_basvurulari.sql`, `007_ekipman_metni.sql` , `008_egitmen_iletisim.sql` ve `009_profil_fotografi.sql` (Supabase SQL Editor'de sırayla, birer kez)
 
 Derleme adımı yok; Vercel `public/` klasörünü olduğu gibi yayınlar.
 

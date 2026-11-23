@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, staffEmail, errMsg, toast, Toaster, adminApi, PERMS,
   todayStr, fmtLong, fmtShort, fmtDateTime, hhmm, addMinutes, nextFridays, DAY_NAMES,
-  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, notifyDinleti, waLink, timeTR
+  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar
 } from './lib.js';
 
 const parseRoute = () => (location.hash.replace(/^#\/?/, '') || '').split('/')[0] || '';
@@ -242,7 +242,7 @@ function Uyeler({ me }) {
           <tbody>
             ${shown.map((m) => html`
               <tr>
-                <td><b>${m.full_name || '—'}</b><div class="sub">${[m.department, m.class_year].filter(Boolean).join(' · ')}</div></td>
+                <td><div class="row nowrap-row"><${Avatar} url=${m.avatar_url} name=${m.full_name} size=${36} /><div><b>${m.full_name || '—'}</b><div class="sub">${[m.department, m.class_year].filter(Boolean).join(' · ')}</div></div></div></td>
                 <td class="mono">${m.student_no}</td>
                 <td>${m.phone}</td>
                 <td>${m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici'}${(m.instruments || []).length ? html`<div class="sub">${m.instruments.join(', ')}</div>` : null}</td>
@@ -775,7 +775,7 @@ function KurslarAdmin() {
             const s = stats[t.id] || { slots: 0, booked: 0, waiting: 0 };
             return html`
               <tr>
-                <td><b>${t.full_name}</b><div class="sub">${[t.department, t.class_year].filter(Boolean).join(' · ')}</div></td>
+                <td><div class="row nowrap-row"><${Avatar} url=${t.avatar_url} name=${t.full_name} size=${36} /><div><b>${t.full_name}</b><div class="sub">${[t.department, t.class_year].filter(Boolean).join(' · ')}</div></div></div></td>
                 <td>${t.instrument}</td><td>${t.kind}</td>
                 <td class="mono">${t.profiles ? t.profiles.student_no : html`<span class="muted">—</span>`}</td>
                 <td>${s.slots} müsait · ${s.booked} dolu${s.waiting ? html` · <span class="badge badge-wait">${s.waiting} talep</span>` : null}${!t.email && !t.profile_id ? html`<div class="sub red">E-posta yok, bildirim gitmez</div>` : null}</td>
@@ -796,7 +796,7 @@ function KurslarAdmin() {
 function InstructorEdit({ t, onClose, onSaved }) {
   const [f, setF] = useState({
     full_name: t.full_name || '', instrument: t.instrument || 'Gitar', kind: t.kind || KINDS[1], department: t.department || '',
-    class_year: t.class_year || '', phone: t.phone || '', email: t.email || '', bio: t.bio || '', active: t.id ? t.active : true,
+    class_year: t.class_year || '', phone: t.phone || '', email: t.email || '', bio: t.bio || '', active: t.id ? t.active : true, avatar_url: t.avatar_url || '',
     student_no: t.profiles ? t.profiles.student_no : '', profile_id: t.profile_id || null
   });
   const [busy, setBusy] = useState(false);
@@ -814,12 +814,23 @@ function InstructorEdit({ t, onClose, onSaved }) {
     e.preventDefault();
     if (f.student_no.trim() && !f.profile_id) return toast('Önce "Bul ve bağla" ile hesabı bağla ya da numarayı sil.', 'err');
     setBusy(true);
-    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, department: f.department, class_year: f.class_year, phone: f.phone, email: f.email.trim(), bio: f.bio, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
+    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, department: f.department, class_year: f.class_year, phone: f.phone, email: f.email.trim(), bio: f.bio, avatar_url: f.avatar_url, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
     const { error } = t.id ? await sb.from('instructors').update(row).eq('id', t.id) : await sb.from('instructors').insert(row);
     setBusy(false);
     if (error) return toast(errMsg(error), 'err');
     toast('Eğitmen kaydedildi.');
     onSaved();
+  };
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoKey] = useState(() => t.id || crypto.randomUUID());
+  const onPhoto = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setPhotoBusy(true);
+    try { const url = await uploadAvatar(file, 'instructors/' + photoKey); setF((x) => ({ ...x, avatar_url: url })); toast('Fotoğraf yüklendi, kaydetmeyi unutma.'); }
+    catch (err) { toast(errMsg(err), 'err'); }
+    setPhotoBusy(false);
   };
   const remove = async () => {
     if (!confirm(t.full_name + ' ve tüm ders kayıtları silinsin mi?')) return;
@@ -830,6 +841,13 @@ function InstructorEdit({ t, onClose, onSaved }) {
   return html`
     <${Modal} title=${t.id ? 'Eğitmeni düzenle' : 'Yeni eğitmen'} onClose=${onClose}>
       <form class="stack" onSubmit=${save}>
+        <div class="row">
+          <${Avatar} url=${f.avatar_url} name=${f.full_name} size=${72} />
+          <div class="stack-sm">
+            <label class="btn btn-ghost file-btn self-start">${photoBusy ? 'Yükleniyor…' : 'Fotoğraf yükle'}<input type="file" accept="image/*" onChange=${onPhoto} disabled=${photoBusy} /></label>
+            <span class="sub">Hesaba bağlı eğitmenlerde üyenin kendi profil fotoğrafı otomatik kullanılır.</span>
+          </div>
+        </div>
         <div class="row align-end">
           <${Field} label="Üye hesabına bağla (öğrenci no)" hint="İsteğe bağlı; bağlanan üye kendi takvimini yönetir"><input class="inp" value=${f.student_no} onInput=${(e) => setF({ ...f, student_no: e.target.value, profile_id: null })} /><//>
           <button type="button" class="btn btn-ghost" onClick=${lookup}>${f.profile_id ? 'Bağlandı ✓' : 'Bul ve bağla'}</button>

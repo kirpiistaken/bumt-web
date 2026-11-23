@@ -184,6 +184,18 @@ p { margin: 0; }
 .btn-wa { background: #1F8A4C; color: #fff; border-color: var(--ink); }
 .btn-wa:hover { background: #18703d; color: #fff; }
 
+/* Profil fotoğrafı */
+.avatar-img { border-radius: 50%; object-fit: cover; border: 2px solid var(--ink); background: #fff; flex: none; display: block; }
+.avatar-ph { border-radius: 50%; background: var(--red); color: #fff; border: 2px solid var(--ink); display: inline-flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-weight: 700; flex: none; }
+.menu-btn { padding-left: 6px; }
+.menu-btn .avatar-img, .menu-btn .avatar-ph { border-width: 1.5px; }
+.photo-card { align-items: center; gap: 22px; }
+.file-btn { position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.member-card { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; margin: 0 auto; }
+.member-card > .stack { flex: 1 1 260px; }
+.member-name { font-size: 28px; }
+
 /* Dinleti */
 .dslot { min-height: 48px; padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; background: #fff; color: var(--ink); border: 2px solid var(--ink); font-size: 15px; }
 .dslot:hover:not(:disabled) { background: var(--cream); }

@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar
 } from './lib.js';
 
 const parseRoute = () => {
@@ -46,7 +46,8 @@ function Header({ me, route }) {
             <a class="btn btn-red btn-sm" href="#/giris">Giriş</a>
           ` : html`
             <div class="menu">
-              <button type="button" class="btn btn-cream btn-sm" aria-expanded=${open} onClick=${() => setOpen(!open)}>
+              <button type="button" class="btn btn-cream btn-sm menu-btn" aria-expanded=${open} onClick=${() => setOpen(!open)}>
+                <${Avatar} url=${me.profile && me.profile.avatar_url} name=${name} size=${28} />
                 ${name}
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
               </button>
@@ -251,7 +252,7 @@ function Kurslar({ me }) {
 
   const load = useCallback(async () => {
     const [{ data: ins }, { data: slots }, { data: bookings }] = await Promise.all([
-      sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id').eq('active', true).order('instrument').order('full_name'),
+      sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id,avatar_url').eq('active', true).order('instrument').order('full_name'),
       sb.from('instructor_slots').select('instructor_id,weekday,hour'),
       sb.from('lesson_bookings').select('id,instructor_id,weekday,hour,user_id,display_name,status').neq('status', 'reddedildi')
     ]);
@@ -337,7 +338,7 @@ function Kurslar({ me }) {
             return html`
               <div class=${'card pad stack teacher ' + (t.id === selId ? 'teacher-on' : '')}>
                 <div class="row nowrap">
-                  <span class="h avatar">${t.full_name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('')}</span>
+                  <${Avatar} url=${t.avatar_url} name=${t.full_name} size=${64} />
                   <div class="stack-xs"><b class="t-name">${t.full_name}</b><span class="muted small">${[t.department, t.class_year].filter(Boolean).join(' · ')}</span></div>
                 </div>
                 <div class="row-sm"><span class="tag tag-dark">${t.instrument}</span><span class="tag tag-cream">${t.kind}</span></div>
@@ -354,10 +355,13 @@ function Kurslar({ me }) {
       ${sel ? html`
         <div id="takvim" class="card pad stack">
           <div class="row between">
+            <div class="row nowrap">
+            <${Avatar} url=${sel.avatar_url} name=${sel.full_name} size=${72} />
             <div class="stack-xs">
               <span class="muted small strong">Haftalık takvim</span>
               <h2 class="h2">${sel.full_name} · ${sel.instrument}</h2>
               <span class="muted small">${[sel.kind, sel.department, sel.class_year].filter(Boolean).join(' · ')}</span>
+            </div>
             </div>
             <div class="row">
               <${Contact} t=${sel} />
@@ -741,7 +745,7 @@ function Profil({ me, refresh }) {
     if (me === null) go('/giris');
     if (!me || !me.profile) return;
     const p = me.profile;
-    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [] });
+    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '' });
     loadMine();
   }, [me && me.user.id]);
 
@@ -768,6 +772,29 @@ function Profil({ me, refresh }) {
     setBusy(false);
     if (error) return toast(errMsg(error), 'err');
     toast('Profilin güncellendi.');
+    refresh();
+  };
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const onPhoto = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      const url = await uploadAvatar(file, me.user.id);
+      const { error } = await sb.from('profiles').update({ avatar_url: url }).eq('id', me.user.id);
+      if (error) throw error;
+      toast('Profil fotoğrafın güncellendi.');
+      refresh();
+    } catch (err) { toast(errMsg(err), 'err'); }
+    setPhotoBusy(false);
+  };
+  const removePhoto = async () => {
+    if (!confirm('Profil fotoğrafın kaldırılsın mı?')) return;
+    await sb.storage.from('avatars').remove([me.user.id + '/avatar.jpg']);
+    const { error } = await sb.from('profiles').update({ avatar_url: '' }).eq('id', me.user.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('Fotoğraf kaldırıldı.');
     refresh();
   };
   const changePw = async (e) => {
@@ -798,6 +825,20 @@ function Profil({ me, refresh }) {
         <span class=${'tag ' + statusTag[0]}>${statusTag[1]}</span>
       </div>
 
+      <div class="card pad row photo-card">
+        <${Avatar} url=${p.avatar_url} name=${p.full_name} size=${112} />
+        <div class="stack">
+          <div class="stack-xs">
+            <b>Profil fotoğrafın</b>
+            <span class="muted small">Eğitmenler, öğrenciler ve grup arkadaşların buluştuğunuzda seni tanısın. Yüzünün net göründüğü bir fotoğraf seç.</span>
+          </div>
+          <div class="row">
+            <label class="btn btn-dark file-btn">${photoBusy ? 'Yükleniyor…' : p.avatar_url ? 'Fotoğrafı değiştir' : 'Fotoğraf yükle'}<input type="file" accept="image/*" onChange=${onPhoto} disabled=${photoBusy} /></label>
+            ${p.avatar_url ? html`<button type="button" class="btn btn-ghost" onClick=${removePhoto}>Kaldır</button>` : null}
+            ${p.status === 'onaylandi' && !p.is_staff ? html`<a class="btn btn-ghost" href=${'#/uye/' + p.id}>Profilimi gör</a>` : null}
+          </div>
+        </div>
+      </div>
       <${ScanCard} />
       <div class="card pad stack">
         <h2 class="h2">Rezervasyonlarım</h2>
@@ -818,6 +859,7 @@ function Profil({ me, refresh }) {
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
         </div>
+        <${Field} label="Hakkımda" hint="Kısa bir tanıtım: ne çalıyorsun, hangi tarzları seviyorsun, neler yapmak istiyorsun…"><textarea class="inp" rows="3" maxlength="500" value=${f.bio} onInput=${set('bio')}></textarea><//>
         <fieldset class="fs"><legend>Toplulukta</legend>
           <div class="row">
             <${Pill} on=${f.member_type === 'dinleyici'} onClick=${() => setF({ ...f, member_type: 'dinleyici' })}>Dinleyici<//>
@@ -872,7 +914,7 @@ function Egitmen({ me, refresh }) {
       <div class="stack-xs">
         <span class="tag tag-dark self-start">Eğitmen paneli</span>
         <h1 class="h page-h">Takvimim ve taleplerim</h1>
-        <span class="muted">${ins.full_name} · ${ins.instrument} · ${ins.kind}</span>
+        <div class="row nowrap"><${Avatar} url=${ins.avatar_url} name=${ins.full_name} size=${56} /><span class="muted">${ins.full_name} · ${ins.instrument} · ${ins.kind}${!ins.avatar_url ? html` · <a href="#/profil">Profil fotoğrafı ekle</a>, öğrenciler seni tanısın` : ''}</span></div>
       </div>
       <div class=${'card pad row between ' + (ins.active ? '' : 'card-off')}>
         <div class="stack-xs">
@@ -1077,7 +1119,10 @@ function Pazar({ me }) {
               <article class="card pad stack post">
                 <div class="row between"><span class="tag tag-red">${p.kind}</span><span class="muted small">${fmtShort(String(p.created_at).slice(0, 10))}</span></div>
                 <h3 class="post-title">${p.title}</h3>
-                <span class="small"><b>${p.display_name}</b>${p.my_role ? ' · ' + p.my_role : ''}${p.genre ? ' · ' + p.genre : ''}</span>
+                <div class="row nowrap">
+                  <${Avatar} url=${p.avatar_url} name=${p.display_name} size=${44} />
+                  <span class="small">${approved ? html`<a href=${'#/uye/' + p.user_id}><b>${p.display_name}</b></a>` : html`<b>${p.display_name}</b>`}${p.my_role ? ' · ' + p.my_role : ''}${p.genre ? ' · ' + p.genre : ''}</span>
+                </div>
                 ${(p.looking_for || []).length ? html`
                   <div class="stack-xs"><span class="muted small strong">Aranıyor</span>
                     <div class="row-sm">${p.looking_for.map((r) => html`<span class="tag tag-cream">${r}</span>`)}</div>
@@ -1099,6 +1144,33 @@ function Pazar({ me }) {
               </article>`;
           })}
         </div>`}
+    </div>`;
+}
+
+function Uye({ id, me }) {
+  const [m, setM] = useState(undefined);
+  useEffect(() => {
+    if (!me) { if (me === null) go('/giris'); return; }
+    sb.rpc('member_card', { p_id: id }).then(({ data, error }) => {
+      if (error) { toast(errMsg(error), 'err'); setM(null); return; }
+      setM((data && data[0]) || null);
+    });
+  }, [id, me && me.user.id]);
+  if (m === undefined) return html`<${Loading} />`;
+  if (!m) return html`<div class="locked"><h1 class="h2">Profil görüntülenemiyor</h1><p class="muted">Üye profillerini onaylı üyeler görebilir.</p></div>`;
+  return html`
+    <div class="card pad-lg narrow member-card">
+      <${Avatar} url=${m.avatar_url} name=${m.full_name} size=${160} />
+      <div class="stack">
+        <h1 class="h2 member-name">${m.full_name}</h1>
+        <div class="row-sm">
+          <span class="tag tag-dark">${m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici'}</span>
+          ${m.instructor_of ? html`<span class="tag tag-red">${m.instructor_of} eğitmeni</span>` : null}
+        </div>
+        ${(m.instruments || []).length ? html`<span><b>Çaldıkları:</b> ${m.instruments.join(', ')}</span>` : null}
+        ${[m.department, m.class_year].filter(Boolean).length ? html`<span class="muted">${[m.department, m.class_year].filter(Boolean).join(' · ')}</span>` : null}
+        ${m.bio ? html`<p class="post-desc">${m.bio}</p>` : html`<p class="muted small">Henüz bir tanıtım yazmamış.</p>`}
+      </div>
     </div>`;
 }
 
@@ -1143,12 +1215,13 @@ function App() {
   else if (p === 'kvkk') page = html`<${Kvkk} />`;
   else if (p === 'pazar') page = html`<${Pazar} me=${me} />`;
   else if (p === 'yoklama') page = html`<${Yoklama} code=${route.param} me=${me} />`;
+  else if (p === 'uye') page = html`<${Uye} id=${route.param} me=${me} />`;
   else page = html`<div class="stack"><h1 class="h page-h">Sayfa bulunamadı</h1><a class="btn btn-ghost self-start" href="#/">Ana sayfa</a></div>`;
 
   return html`
     <${Header} me=${me} route=${route} />
     <${StatusBanner} me=${me} />
-    <main class="wrap main" id="icerik">${me === undefined && ['prova', 'kurslar', 'dinletiler', 'profil', 'egitmen', 'pazar', 'yoklama'].includes(p) ? html`<${Loading} />` : page}</main>
+    <main class="wrap main" id="icerik">${me === undefined && ['prova', 'kurslar', 'dinletiler', 'profil', 'egitmen', 'pazar', 'yoklama', 'uye'].includes(p) ? html`<${Loading} />` : page}</main>
     <footer class="ftr">
       <div class="wrap ftr-in">
         <div class="row nowrap"><span class="ftr-logo"><img src="/assets/logo.png" alt="" /></span><b>Başkent Üniversitesi Müzik Topluluğu</b></div>

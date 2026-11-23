@@ -366,3 +366,37 @@ export function QrScanner({ onResult, onClose }) {
       </div>
     </div>`;
 }
+
+// ---- Profil fotoğrafı --------------------------------------------------
+export function Avatar({ url, name, size, cls }) {
+  const s = size || 48;
+  const initials = String(name || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toLocaleUpperCase('tr');
+  const style = 'width:' + s + 'px;height:' + s + 'px;font-size:' + Math.round(s * 0.38) + 'px';
+  return url
+    ? html`<img class=${'avatar-img ' + (cls || '')} src=${url} alt=${name ? name + ' fotoğrafı' : ''} style=${style} loading="lazy" />`
+    : html`<span class=${'avatar-ph ' + (cls || '')} style=${style} aria-hidden="true">${initials}</span>`;
+}
+
+// Fotoğrafı kare kırpıp küçültür (512 px JPEG) ve avatars deposuna yükler; herkese açık adresi döner.
+export async function uploadAvatar(file, folder) {
+  if (!file || !/^image\//.test(file.type)) throw new Error('Lütfen bir fotoğraf seç.');
+  if (file.size > 15 * 1024 * 1024) throw new Error('Fotoğraf çok büyük (en fazla 15 MB).');
+  const bmp = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Fotoğraf okunamadı. JPG ya da PNG dene.'));
+    img.src = URL.createObjectURL(file);
+  });
+  const side = Math.min(bmp.naturalWidth, bmp.naturalHeight);
+  const out = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = out; canvas.height = out;
+  canvas.getContext('2d').drawImage(bmp, (bmp.naturalWidth - side) / 2, (bmp.naturalHeight - side) / 2, side, side, 0, 0, out, out);
+  URL.revokeObjectURL(bmp.src);
+  const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+  const path = folder + '/avatar.jpg';
+  const { error } = await sb.storage.from('avatars').upload(path, blob, { contentType: 'image/jpeg', upsert: true, cacheControl: '3600' });
+  if (error) throw error;
+  const { data } = sb.storage.from('avatars').getPublicUrl(path);
+  return data.publicUrl + '?v=' + Date.now();
+}
