@@ -602,11 +602,12 @@ function KurslarAdmin() {
     const [{ data: ins }, { data: sl }, { data: bk }] = await Promise.all([
       sb.from('instructors').select('*, profiles(student_no)').order('instrument').order('full_name'),
       sb.from('instructor_slots').select('instructor_id'),
-      sb.from('lesson_bookings').select('instructor_id')
+      sb.from('lesson_bookings').select('instructor_id,status').neq('status', 'reddedildi')
     ]);
     const s = {};
-    (sl || []).forEach((x) => { s[x.instructor_id] = s[x.instructor_id] || { slots: 0, booked: 0 }; s[x.instructor_id].slots++; });
-    (bk || []).forEach((x) => { s[x.instructor_id] = s[x.instructor_id] || { slots: 0, booked: 0 }; s[x.instructor_id].booked++; });
+    const get = (id) => (s[id] = s[id] || { slots: 0, booked: 0, waiting: 0 });
+    (sl || []).forEach((x) => { get(x.instructor_id).slots++; });
+    (bk || []).forEach((x) => { if (x.status === 'onaylandi') get(x.instructor_id).booked++; else get(x.instructor_id).waiting++; });
     setList(ins || []); setStats(s);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -621,18 +622,18 @@ function KurslarAdmin() {
       <div class="panel table-wrap">
         ${list.length === 0 ? html`<${Empty}>Henüz eğitmen yok.<//>` : html`
         <table class="tbl">
-          <thead><tr><th>Eğitmen</th><th>Enstrüman</th><th>Tür</th><th>Bağlı hesap</th><th>Müsait / dolu</th><th>Durum</th><th></th></tr></thead>
+          <thead><tr><th>Eğitmen</th><th>Enstrüman</th><th>Tür</th><th>Bağlı hesap</th><th>Saatler</th><th>Durum</th><th></th></tr></thead>
           <tbody>${list.map((t) => {
-            const s = stats[t.id] || { slots: 0, booked: 0 };
+            const s = stats[t.id] || { slots: 0, booked: 0, waiting: 0 };
             return html`
               <tr>
                 <td><b>${t.full_name}</b><div class="sub">${[t.department, t.class_year].filter(Boolean).join(' · ')}</div></td>
                 <td>${t.instrument}</td><td>${t.kind}</td>
                 <td class="mono">${t.profiles ? t.profiles.student_no : html`<span class="muted">—</span>`}</td>
-                <td>${s.slots} saat · ${s.booked} dolu</td>
+                <td>${s.slots} müsait · ${s.booked} dolu${s.waiting ? html` · <span class="badge badge-wait">${s.waiting} talep</span>` : null}${!t.email && !t.profile_id ? html`<div class="sub red">E-posta yok, bildirim gitmez</div>` : null}</td>
                 <td><span class=${'badge ' + (t.active ? 'badge-ok' : 'badge-no')}>${t.active ? 'Sitede' : 'Gizli'}</span></td>
                 <td class="actions">
-                  <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setCal(t)}>Takvim</button>
+                  <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setCal(t)}>Takvim ve talepler</button>
                   <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setEdit(t)}>Düzenle</button>
                 </td>
               </tr>`;
@@ -640,14 +641,14 @@ function KurslarAdmin() {
         </table>`}
       </div>
       ${edit ? html`<${InstructorEdit} t=${edit} onClose=${() => setEdit(null)} onSaved=${() => { setEdit(null); load(); }} />` : null}
-      ${cal ? html`<${Modal} title=${cal.full_name + ' · takvim'} wide=${true} onClose=${() => { setCal(null); load(); }}><${InstructorScheduleEditor} instructor=${cal} /><//>` : null}
+      ${cal ? html`<${Modal} title=${cal.full_name + ' · takvim ve talepler'} wide=${true} onClose=${() => { setCal(null); load(); }}><${InstructorScheduleEditor} instructor=${cal} /><//>` : null}
     </div>`;
 }
 
 function InstructorEdit({ t, onClose, onSaved }) {
   const [f, setF] = useState({
     full_name: t.full_name || '', instrument: t.instrument || 'Gitar', kind: t.kind || KINDS[1], department: t.department || '',
-    class_year: t.class_year || '', phone: t.phone || '', bio: t.bio || '', active: t.id ? t.active : true,
+    class_year: t.class_year || '', phone: t.phone || '', email: t.email || '', bio: t.bio || '', active: t.id ? t.active : true,
     student_no: t.profiles ? t.profiles.student_no : '', profile_id: t.profile_id || null
   });
   const [busy, setBusy] = useState(false);
@@ -656,16 +657,16 @@ function InstructorEdit({ t, onClose, onSaved }) {
   const lookup = async () => {
     const no = f.student_no.trim();
     if (!no) return setF({ ...f, profile_id: null });
-    const { data } = await sb.from('profiles').select('id,full_name,department,class_year,phone,status').eq('student_no', no).maybeSingle();
+    const { data } = await sb.from('profiles').select('id,full_name,department,class_year,phone,contact_email,status').eq('student_no', no).maybeSingle();
     if (!data) return toast('Bu öğrenci numarasıyla üye bulunamadı.', 'err');
-    setF({ ...f, profile_id: data.id, full_name: f.full_name || data.full_name, department: f.department || data.department, class_year: f.class_year || data.class_year, phone: f.phone || data.phone });
+    setF({ ...f, profile_id: data.id, full_name: f.full_name || data.full_name, department: f.department || data.department, class_year: f.class_year || data.class_year, phone: f.phone || data.phone, email: f.email || data.contact_email || '' });
     toast(data.full_name + ' hesabı bağlandı' + (data.status !== 'onaylandi' ? ' (üyeliği henüz onaylı değil)' : '') + '.');
   };
   const save = async (e) => {
     e.preventDefault();
     if (f.student_no.trim() && !f.profile_id) return toast('Önce "Bul ve bağla" ile hesabı bağla ya da numarayı sil.', 'err');
     setBusy(true);
-    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, department: f.department, class_year: f.class_year, phone: f.phone, bio: f.bio, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
+    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, department: f.department, class_year: f.class_year, phone: f.phone, email: f.email.trim(), bio: f.bio, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
     const { error } = t.id ? await sb.from('instructors').update(row).eq('id', t.id) : await sb.from('instructors').insert(row);
     setBusy(false);
     if (error) return toast(errMsg(error), 'err');
@@ -692,6 +693,7 @@ function InstructorEdit({ t, onClose, onSaved }) {
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
           <${Field} label="WhatsApp numarası" hint="Sadece giriş yapan üyeler görür"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>
+          <${Field} label="E-posta" hint="Ders talepleri buraya gönderilir"><input class="inp" type="email" value=${f.email} onInput=${set('email')} /><//>
         </div>
         <${Field} label="Kısa tanıtım"><textarea class="inp" rows="2" value=${f.bio} onInput=${set('bio')}></textarea><//>
         <label class="check"><input type="checkbox" checked=${f.active} onChange=${set('active')} />Sitede göster</label>

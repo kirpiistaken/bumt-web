@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson
 } from './lib.js';
 
 const parseRoute = () => {
@@ -97,7 +97,7 @@ function Home() {
     <section class="hero">
       <div class="hero-txt">
         <span class="tag tag-red">Başkent Üniversitesi</span>
-        <h1 class="h hero-h">Sahne senin.<br />Ses bizim.</h1>
+        <h1 class="h hero-h">Sahne<br />hepimizin.</h1>
         <p class="muted lead">Başkent Üniversitesi Müzik Topluluğu: her cuma prova odası, ayda iki dinleti, enstrüman kursları ve BÜMT Fest. Üye ol, rezervasyonunu yap, sahneye çık.</p>
         <div class="row">
           <a class="btn btn-red" href="#/prova">Prova odası rezervasyonu</a>
@@ -247,7 +247,7 @@ function Kurslar({ me }) {
     const [{ data: ins }, { data: slots }, { data: bookings }] = await Promise.all([
       sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id').eq('active', true).order('instrument').order('full_name'),
       sb.from('instructor_slots').select('instructor_id,weekday,hour'),
-      sb.from('lesson_bookings').select('id,instructor_id,weekday,hour,user_id,display_name')
+      sb.from('lesson_bookings').select('id,instructor_id,weekday,hour,user_id,display_name,status').neq('status', 'reddedildi')
     ]);
     setData({ ins: ins || [], slots: slots || [], bookings: bookings || [] });
   }, []);
@@ -266,7 +266,9 @@ function Kurslar({ me }) {
   const uid = me && me.user.id;
   const gate = bookingGate(me);
 
-  const freeCount = (id) => data.slots.filter((s) => s.instructor_id === id && !data.bookings.some((b) => b.instructor_id === id && b.weekday === s.weekday && b.hour === s.hour)).length;
+  const approvedAt = (id, d, h) => data.bookings.find((b) => b.instructor_id === id && b.weekday === d && b.hour === h && b.status === 'onaylandi');
+  const mineAt = (id, d, h) => uid && data.bookings.find((b) => b.instructor_id === id && b.weekday === d && b.hour === h && b.user_id === uid);
+  const freeCount = (id) => data.slots.filter((s) => s.instructor_id === id && !approvedAt(id, s.weekday, s.hour)).length;
   const open = (id) => { setSelId(id); setPicked(null); setTimeout(() => { const el = document.getElementById('takvim'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
 
   let grid = null;
@@ -282,18 +284,20 @@ function Kurslar({ me }) {
     if (!gate.ok) return gateMessage(gate);
     const [d, h] = picked.split('-').map(Number);
     setBusy(true);
-    const { error } = await sb.from('lesson_bookings').insert({ instructor_id: sel.id, weekday: d, hour: h });
+    const { data: row, error } = await sb.from('lesson_bookings').insert({ instructor_id: sel.id, weekday: d, hour: h }).select('id').single();
+    if (error) { setBusy(false); toast(errMsg(error), 'err'); return load(); }
+    await notifyLesson('notify_request', row.id);
     setBusy(false);
-    if (error) { toast(errMsg(error), 'err'); return load(); }
     setPicked(null);
-    toast('Kaydın alındı! Şimdi ' + sel.full_name + ' ile WhatsApp\'tan iletişime geç.');
+    toast('Talebin ' + sel.full_name + ' adlı eğitmene iletildi. Onaylanınca bu saat senin olur; bu arada WhatsApp\'tan da yazabilirsin.');
     load();
   };
   const cancelMine = async (b) => {
-    if (!confirm(DAY_NAMES[b.weekday] + ' ' + b.hour + ':00 dersini iptal etmek istiyor musun?')) return;
+    const what = b.status === 'onaylandi' ? 'dersini' : 'ders talebini';
+    if (!confirm(DAY_NAMES[b.weekday] + ' ' + b.hour + ':00 ' + what + ' iptal etmek istiyor musun?')) return;
     const { error } = await sb.from('lesson_bookings').delete().eq('id', b.id);
     if (error) return toast(errMsg(error), 'err');
-    toast('Ders kaydın iptal edildi.');
+    toast('İptal edildi.');
     load();
   };
 
@@ -301,7 +305,7 @@ function Kurslar({ me }) {
     <div class="stack-lg">
       <div class="stack">
         <h1 class="h page-h">Enstrüman kursları</h1>
-        <p class="muted measure">Hocalarımız, ders veren ve gönüllü öğrencilerimiz müsait saatlerini kendileri işaretler. Bir eğitmen seç, takviminden boş saate kayıt ol, sonra WhatsApp'tan iletişime geç.</p>
+        <p class="muted measure">Hocalarımız, ders veren ve gönüllü öğrencilerimiz müsait saatlerini kendileri işaretler. Bir eğitmen seç, takviminden boş bir saate talep gönder; eğitmen onaylayınca ders senin.</p>
       </div>
       ${data.ins.length === 0 ? html`<p class="muted">Henüz eğitmen eklenmedi.</p>` : html`
         <div class="row" role="group" aria-label="Enstrümana göre filtrele">
@@ -348,10 +352,12 @@ function Kurslar({ me }) {
                   ${grid.days.map((d) => {
                     const key = d + '-' + h;
                     const avail = grid.mySlots.some((s) => s.weekday === d && s.hour === h);
-                    const b = data.bookings.find((x) => x.instructor_id === sel.id && x.weekday === d && x.hour === h);
+                    const b = approvedAt(sel.id, d, h);
+                    const mine = mineAt(sel.id, d, h);
                     const when = DAY_NAMES[d] + ' ' + h + ':00';
-                    if (b && b.user_id === uid) return html`<button type="button" class="cell cell-booked" aria-label=${when + ', senin dersin, iptal etmek için tıkla'} onClick=${() => cancelMine(b)}>Senin dersin</button>`;
+                    if (mine && mine.status === 'onaylandi') return html`<button type="button" class="cell cell-booked" aria-label=${when + ', senin dersin, iptal etmek için tıkla'} onClick=${() => cancelMine(mine)}>Senin dersin</button>`;
                     if (b) return html`<span class="cell cell-taken" aria-label=${when + ', dolu'}>Dolu</span>`;
+                    if (mine) return html`<button type="button" class="cell cell-pending" aria-label=${when + ', talebin onay bekliyor, iptal etmek için tıkla'} onClick=${() => cancelMine(mine)}>Talebin beklemede</button>`;
                     if (avail) return html`<button type="button" class=${'cell ' + (picked === key ? 'cell-picked' : 'cell-avail')} aria-pressed=${picked === key} aria-label=${when + ', müsait'} onClick=${() => setPicked(picked === key ? null : key)}>${picked === key ? 'Seçildi' : 'Müsait'}</button>`;
                     return html`<span class="cell cell-none" aria-hidden="true"></span>`;
                   })}
@@ -362,15 +368,16 @@ function Kurslar({ me }) {
             <div class="legend">
               <span><i class="sw sw-avail"></i>Müsait</span>
               <span><i class="sw sw-taken"></i>Dolu</span>
+              <span><i class="sw sw-pending"></i>Talebin beklemede</span>
               <span><i class="sw sw-booked"></i>Senin dersin</span>
             </div>
             ${picked ? html`
               <div class="row">
                 <b>Seçilen: ${DAY_NAMES[+picked.split('-')[0]]} ${picked.split('-')[1]}:00</b>
-                <button type="button" class="btn btn-red" disabled=${busy} onClick=${enroll}>${gate.reason === 'login' ? 'Giriş yap ve kayıt ol' : 'Kayıt ol'}</button>
+                <button type="button" class="btn btn-red" disabled=${busy} onClick=${enroll}>${gate.reason === 'login' ? 'Giriş yap ve talep gönder' : 'Talep gönder'}</button>
               </div>` : null}
           </div>
-          <p class="muted small">Kayıt olduğun saat her hafta senin için ayrılır. Ders ücreti, yeri ve başlangıç tarihini eğitmenle konuşarak netleştir.</p>
+          <p class="muted small">Talebin eğitmene e-postayla iletilir. Eğitmen onaylayınca o saat her hafta senin için ayrılır ve takvimde dolu görünür. Ders yeri ve başlangıç tarihini eğitmenle konuşarak netleştir.</p>
         </div>` : null}
     </div>`;
 }
@@ -678,7 +685,7 @@ function Profil({ me, refresh }) {
     const today = todayStr();
     const [{ data: pv }, { data: ls }, { data: dn }] = await Promise.all([
       sb.from('prova_bookings').select('id,day,prova_slots(start_time,end_time)').eq('user_id', uid).gte('day', today).order('day'),
-      sb.from('lesson_bookings').select('id,weekday,hour,instructors(full_name,instrument)').eq('user_id', uid),
+      sb.from('lesson_bookings').select('id,weekday,hour,status,instructors(full_name,instrument)').eq('user_id', uid).neq('status', 'reddedildi'),
       sb.from('dinleti_bookings').select('id,slot_index,perf_type,dinletiler(day,start_time,slot_minutes)').eq('user_id', uid)
     ]);
     setMine({ pv: pv || [], ls: ls || [], dn: (dn || []).filter((d) => d.dinletiler && d.dinletiler.day >= today) });
@@ -731,7 +738,7 @@ function Profil({ me, refresh }) {
         ${!mine ? html`<${Loading} />` : (mine.pv.length + mine.ls.length + mine.dn.length) === 0 ? html`<p class="muted">Aktif rezervasyonun yok.</p>` : html`
           <ul class="list">
             ${mine.pv.map((r) => html`<li><span><b>Prova odası</b> · ${fmtLong(r.day)} · ${hhmm(r.prova_slots && r.prova_slots.start_time)}–${hhmm(r.prova_slots && r.prova_slots.end_time)}</span><button type="button" class="link-btn" onClick=${() => del('prova_bookings', r.id)}>İptal</button></li>`)}
-            ${mine.ls.map((r) => html`<li><span><b>${r.instructors ? r.instructors.instrument + ' dersi' : 'Ders'}</b> · ${r.instructors ? r.instructors.full_name : ''} · her ${DAY_NAMES[r.weekday]} ${r.hour}:00</span><button type="button" class="link-btn" onClick=${() => del('lesson_bookings', r.id)}>İptal</button></li>`)}
+            ${mine.ls.map((r) => html`<li><span><b>${r.instructors ? r.instructors.instrument + ' dersi' : 'Ders'}</b> · ${r.instructors ? r.instructors.full_name : ''} · her ${DAY_NAMES[r.weekday]} ${r.hour}:00 · ${r.status === 'onaylandi' ? html`<span class="tag tag-dark">Onaylandı</span>` : html`<span class="tag tag-cream">Onay bekliyor</span>`}</span><button type="button" class="link-btn" onClick=${() => del('lesson_bookings', r.id)}>İptal</button></li>`)}
             ${mine.dn.map((r) => html`<li><span><b>Dinleti</b> · ${fmtLong(r.dinletiler.day)} · ${addMinutes(r.dinletiler.start_time, r.slot_index * r.dinletiler.slot_minutes)} · ${r.perf_type}</span><button type="button" class="link-btn" onClick=${() => del('dinleti_bookings', r.id)}>İptal</button></li>`)}
           </ul>`}
       </div>
@@ -776,14 +783,14 @@ function Egitmen({ me, refresh }) {
   const [f, setF] = useState(null);
   useEffect(() => {
     if (me === null) go('/giris');
-    if (me && me.instructor) setF({ phone: me.instructor.phone, bio: me.instructor.bio });
+    if (me && me.instructor) setF({ phone: me.instructor.phone, email: me.instructor.email || '', bio: me.instructor.bio });
   }, [me && me.user.id, me && me.instructor && me.instructor.id]);
   if (me === undefined) return html`<${Loading} />`;
   if (!me || !me.instructor) return html`<div class="locked"><h1 class="h2">Eğitmen paneli</h1><p class="muted">Bu sayfa eğitmen olarak eklenmiş üyeler içindir. Eğitmen olmak istiyorsan yönetim kuruluna yaz.</p></div>`;
   const ins = me.instructor;
   const save = async (e) => {
     e.preventDefault();
-    const { error } = await sb.from('instructors').update({ phone: f.phone, bio: f.bio }).eq('id', ins.id);
+    const { error } = await sb.from('instructors').update({ phone: f.phone, email: f.email.trim(), bio: f.bio }).eq('id', ins.id);
     if (error) return toast(errMsg(error), 'err');
     toast('Bilgilerin güncellendi.');
     refresh();
@@ -792,7 +799,7 @@ function Egitmen({ me, refresh }) {
     <div class="stack-lg">
       <div class="stack-xs">
         <span class="tag tag-dark self-start">Eğitmen paneli</span>
-        <h1 class="h page-h">Müsaitlik takvimim</h1>
+        <h1 class="h page-h">Takvimim ve taleplerim</h1>
         <span class="muted">${ins.full_name} · ${ins.instrument} · ${ins.kind}</span>
         ${!ins.active ? html`<span class="form-err">Profilin şu an sitede gizli. Yönetim kurulu aktif edince görünür.</span>` : null}
       </div>
@@ -800,6 +807,7 @@ function Egitmen({ me, refresh }) {
       ${f ? html`
         <form class="card pad stack" onSubmit=${save}>
           <h2 class="h2">Öğrencilerin göreceği bilgiler</h2>
+          <${Field} label="Talep bildirimleri için e-postan" hint="Yeni ders talepleri bu adrese gelir"><input class="inp" type="email" value=${f.email} onInput=${(e) => setF({ ...f, email: e.target.value })} /><//>
           <${Field} label="WhatsApp numaran" hint="Sadece giriş yapmış üyeler görür"><input class="inp" type="tel" value=${f.phone} onInput=${(e) => setF({ ...f, phone: e.target.value })} /><//>
           <${Field} label="Kısa tanıtım"><textarea class="inp" rows="3" maxlength="300" value=${f.bio} onInput=${(e) => setF({ ...f, bio: e.target.value })} placeholder="Örn. 8 yıldır keman çalıyorum, başlangıç seviyesine ders veriyorum."></textarea><//>
           <button type="submit" class="btn btn-dark self-start">Kaydet</button>

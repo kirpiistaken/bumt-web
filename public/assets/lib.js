@@ -65,6 +65,19 @@ export async function adminApi(action, body) {
   return d;
 }
 
+// Ders talebi e-postaları (hata olsa bile akışı bozmaz)
+export async function notifyLesson(action, booking_id) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch('/api/lesson', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session ? session.access_token : '') },
+      body: JSON.stringify({ action, booking_id })
+    });
+    return await r.json().catch(() => ({}));
+  } catch (e) { return {}; }
+}
+
 // ---- Hata mesajları -------------------------------------------------
 export function errMsg(e) {
   if (!e) return 'Bir hata oluştu.';
@@ -146,7 +159,8 @@ export function Toaster() {
 
 // ---- Haftalık müsaitlik takvimi (eğitmen paneli ve yönetim) ----------
 // slots: Set('gün-saat'), bookings: { 'gün-saat': isim }
-export function AvailabilityGrid({ slots, bookings, onToggle, onBooked, busy }) {
+export function AvailabilityGrid({ slots, bookings, pending, onToggle, onBooked, busy }) {
+  pending = pending || {};
   return html`
     <div class="grid-scroll">
       <div class="cal" style=${'grid-template-columns: 56px repeat(' + GRID_DAYS.length + ', minmax(0, 1fr))'}>
@@ -165,35 +179,40 @@ export function AvailabilityGrid({ slots, bookings, onToggle, onBooked, busy }) 
             }
             return html`<button type="button" class=${'cell ' + (on ? 'cell-on' : 'cell-off')} disabled=${busy}
               aria-pressed=${on} aria-label=${DAY_NAMES[d] + ' ' + h + ':00, ' + (on ? 'müsait' : 'kapalı')}
-              onClick=${() => onToggle(d, h, on)}>${on ? 'Müsait' : ''}</button>`;
+              onClick=${() => onToggle(d, h, on)}>${on ? (pending[key] ? 'Müsait · ' + pending[key] + ' talep' : 'Müsait') : ''}</button>`;
           })}
         `)}
       </div>
     </div>`;
 }
 
-// Bir eğitmenin müsaitliğini yükleyip düzenleyen hazır bileşen
+// Bir eğitmenin müsaitliğini ve ders taleplerini yöneten hazır bileşen
 export function InstructorScheduleEditor({ instructor }) {
   const [slots, setSlots] = useState(new Set());
-  const [bookings, setBookings] = useState({});
-  const [rows, setRows] = useState([]);
+  const [reqs, setReqs] = useState([]);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [{ data: s }, { data: b }] = await Promise.all([
+    const [{ data: s }, { data: r, error }] = await Promise.all([
       sb.from('instructor_slots').select('weekday,hour').eq('instructor_id', instructor.id),
-      sb.from('lesson_bookings').select('id,weekday,hour,display_name,user_id').eq('instructor_id', instructor.id)
+      sb.rpc('lesson_requests', { p_instructor: instructor.id })
     ]);
+    if (error) toast(errMsg(error), 'err');
     setSlots(new Set((s || []).map((x) => x.weekday + '-' + x.hour)));
-    const bm = {};
-    (b || []).forEach((x) => { bm[x.weekday + '-' + x.hour] = x.display_name; });
-    setBookings(bm);
-    setRows(b || []);
+    setReqs(r || []);
   }, [instructor.id]);
-
   useEffect(() => { load(); }, [load]);
 
+  const approved = reqs.filter((r) => r.status === 'onaylandi');
+  const waiting = reqs.filter((r) => r.status === 'bekliyor');
+  const bookings = {};
+  approved.forEach((r) => { bookings[r.weekday + '-' + r.hour] = shortName(r.full_name); });
+  const pending = {};
+  waiting.forEach((r) => { const k = r.weekday + '-' + r.hour; pending[k] = (pending[k] || 0) + 1; });
+
   const toggle = async (d, h, on) => {
+    const k = d + '-' + h;
+    if (on && pending[k] && !confirm('Bu saatte bekleyen ' + pending[k] + ' talep var. Saati kapatırsan talepler de silinir. Devam edilsin mi?')) return;
     setBusy(true);
     const q = on
       ? sb.from('instructor_slots').delete().match({ instructor_id: instructor.id, weekday: d, hour: h })
@@ -203,23 +222,71 @@ export function InstructorScheduleEditor({ instructor }) {
     if (error) return toast(errMsg(error), 'err');
     load();
   };
-  const cancel = async (d, h, name) => {
-    const row = rows.find((r) => r.weekday === d && r.hour === h);
-    if (!row || !confirm(name + ' ile ' + DAY_NAMES[d] + ' ' + h + ':00 dersini iptal etmek istiyor musun?')) return;
-    const { error } = await sb.from('lesson_bookings').delete().eq('id', row.id);
+  const decide = async (r, status) => {
+    if (status === 'reddedildi' && !confirm(r.full_name + ' adlı öğrencinin talebi reddedilsin mi?')) return;
+    setBusy(true);
+    const { error } = await sb.rpc('decide_lesson', { p_id: r.id, p_status: status });
+    setBusy(false);
+    if (error) return toast(errMsg(error), 'err');
+    notifyLesson('notify_decision', r.id);
+    toast(status === 'onaylandi' ? 'Onaylandı. Şimdi ' + r.full_name + ' ile iletişime geç.' : 'Talep reddedildi.');
+    load();
+  };
+  const cancel = async (r) => {
+    if (!confirm(r.full_name + ' ile ' + DAY_NAMES[r.weekday] + ' ' + r.hour + ':00 dersi iptal edilsin mi?')) return;
+    const { error } = await sb.from('lesson_bookings').delete().eq('id', r.id);
     if (error) return toast(errMsg(error), 'err');
     toast('Ders iptal edildi, saat tekrar müsait.');
     load();
   };
+  const onBooked = (d, h) => { const r = approved.find((x) => x.weekday === d && x.hour === h); if (r) cancel(r); };
+  const when = (r) => DAY_NAMES[r.weekday] + ' ' + r.hour + ':00';
+  const contact = (r) => html`
+    <span class="req-contact">
+      <span class="mono">${r.student_no}</span>
+      ${r.phone ? html` · <a href=${'tel:' + r.phone}>${r.phone}</a> · <a href=${waLink(r.phone, 'Merhaba ' + r.full_name + ', BÜMT ders talebin hakkında yazıyorum.')} target="_blank" rel="noopener">WhatsApp</a>` : null}
+      ${r.contact_email ? html` · <a href=${'mailto:' + r.contact_email}>${r.contact_email}</a>` : null}
+    </span>`;
 
   return html`
     <div class="stack">
-      <p class="muted small">Ders verebileceğin saatlere tıkla, tekrar tıklarsan kapanır. Dolu bir saate tıklarsan o dersi iptal edebilirsin.</p>
-      <${AvailabilityGrid} slots=${slots} bookings=${bookings} onToggle=${toggle} onBooked=${cancel} busy=${busy} />
+      <div class="req-box">
+        <b>Bekleyen talepler (${waiting.length})</b>
+        ${waiting.length === 0 ? html`<p class="muted small">Bekleyen talep yok.</p>` : html`
+          <ul class="req-list">
+            ${waiting.map((r) => html`
+              <li>
+                <div class="stack-xs"><span><b>${r.full_name}</b> · ${when(r)}</span>${contact(r)}</div>
+                <div class="req-actions">
+                  <button type="button" class="btn btn-sm btn-red" disabled=${busy} onClick=${() => decide(r, 'onaylandi')}>Onayla</button>
+                  <button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${() => decide(r, 'reddedildi')}>Reddet</button>
+                </div>
+              </li>`)}
+          </ul>`}
+      </div>
+      ${approved.length ? html`
+        <div class="req-box">
+          <b>Onaylı dersler (${approved.length})</b>
+          <ul class="req-list">
+            ${approved.map((r) => html`
+              <li>
+                <div class="stack-xs"><span><b>${r.full_name}</b> · her ${when(r)}</span>${contact(r)}</div>
+                <div class="req-actions"><button type="button" class="btn btn-sm btn-ghost" onClick=${() => cancel(r)}>Dersi iptal et</button></div>
+              </li>`)}
+          </ul>
+        </div>` : null}
+      <p class="muted small">Ders verebileceğin saatlere tıkla, tekrar tıklarsan kapanır. Bir talebi onayladığında o saat sitede dolu görünür ve aynı saate gelen diğer talepler reddedilir.</p>
+      <${AvailabilityGrid} slots=${slots} bookings=${bookings} pending=${pending} onToggle=${toggle} onBooked=${onBooked} busy=${busy} />
       <div class="legend">
         <span><i class="sw sw-on"></i>Müsait</span>
-        <span><i class="sw sw-booked"></i>Dolu (öğrenci adıyla)</span>
+        <span><i class="sw sw-booked"></i>Onaylı ders</span>
         <span><i class="sw sw-off"></i>Kapalı</span>
       </div>
     </div>`;
+}
+
+function shortName(n) {
+  const parts = String(n || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] || 'Öğrenci';
+  return parts[0] + ' ' + parts[parts.length - 1][0] + '.';
 }
