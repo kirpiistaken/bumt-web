@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, QrScanner, yoklamaCode, timeTR
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR
 } from './lib.js';
 
 const parseRoute = () => {
@@ -391,10 +391,11 @@ function Kurslar({ me }) {
 // ---------------------------------------------------------------------
 // Dinletiler
 // ---------------------------------------------------------------------
+const EQUIPMENT = ['Mikrofon', 'Gitar amfisi', 'Bas amfisi', 'Davul seti', 'Klavye', 'Kendi ekipmanımız var'];
+
 function Dinletiler({ me }) {
   const [data, setData] = useState(null);
-  const [type, setType] = useState('Solo');
-  const [performer, setPerformer] = useState('');
+  const [apply, setApply] = useState(null); // { d, i, ...form }
   const [busy, setBusy] = useState(false);
   const today = todayStr();
 
@@ -404,7 +405,9 @@ function Dinletiler({ me }) {
       sb.from('dinletiler').select('*').eq('active', true).gte('day', today).order('day').limit(6)
     ]);
     const ids = (list || []).map((d) => d.id);
-    const { data: bookings } = ids.length ? await sb.from('dinleti_bookings').select('id,dinleti_id,slot_index,user_id,display_name,perf_type').in('dinleti_id', ids) : { data: [] };
+    const { data: bookings } = ids.length
+      ? await sb.from('dinleti_bookings').select('id,dinleti_id,slot_index,user_id,display_name,perf_type,status').in('dinleti_id', ids).neq('status', 'reddedildi')
+      : { data: [] };
     setData({ settings: settings || { dinleti_open_days: 21 }, list: list || [], bookings: bookings || [] });
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -413,20 +416,37 @@ function Dinletiler({ me }) {
   const uid = me && me.user.id;
   const gate = bookingGate(me);
 
-  const book = async (d, i) => {
+  const open = (d, i) => {
     if (!gate.ok) return gateMessage(gate);
+    setApply({ d, i, perf_type: 'Solo', performer: '', people_count: 1, members: '', repertoire: '', video_url: '', equipment: [], note: '' });
+    setTimeout(() => { const el = document.getElementById('basvuru'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+  };
+  const set = (k) => (e) => setApply({ ...apply, [k]: e.target.value });
+  const toggleEq = (x) => setApply({ ...apply, equipment: apply.equipment.includes(x) ? apply.equipment.filter((y) => y !== x) : [...apply.equipment, x] });
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!apply.repertoire.trim()) return toast('Çalacağın / söyleyeceğin parçaları yaz.', 'err');
+    let video = apply.video_url.trim();
+    if (video && !/^https?:\/\//i.test(video)) video = 'https://' + video;
     setBusy(true);
-    const { error } = await sb.from('dinleti_bookings').insert({ dinleti_id: d.id, slot_index: i, perf_type: type, performer: performer.trim() });
+    const { data: row, error } = await sb.from('dinleti_bookings').insert({
+      dinleti_id: apply.d.id, slot_index: apply.i, perf_type: apply.perf_type, performer: apply.performer.trim(),
+      people_count: apply.perf_type === 'Grup' ? Math.max(2, +apply.people_count || 2) : (+apply.people_count || 1),
+      members: apply.members.trim(), repertoire: apply.repertoire.trim(), video_url: video, equipment: apply.equipment, note: apply.note.trim()
+    }).select('id').single();
+    if (error) { setBusy(false); toast(errMsg(error), 'err'); return load(); }
+    await notifyDinleti('notify_request', row.id);
     setBusy(false);
-    if (error) { toast(errMsg(error), 'err'); return load(); }
-    toast('Slotun ayrıldı: ' + fmtShort(d.day) + ', ' + addMinutes(d.start_time, i * d.slot_minutes) + ' (' + type + ')');
+    setApply(null);
+    toast('Başvurun alındı! Yönetim kurulu seninle iletişime geçip değerlendirecek.');
     load();
   };
   const cancel = async (b) => {
-    if (!confirm('Dinleti slotunu iptal etmek istiyor musun?')) return;
+    if (!confirm(b.status === 'onaylandi' ? 'Dinleti yerini iptal etmek istiyor musun?' : 'Başvurunu geri çekmek istiyor musun?')) return;
     const { error } = await sb.from('dinleti_bookings').delete().eq('id', b.id);
     if (error) return toast(errMsg(error), 'err');
-    toast('Slotun iptal edildi.');
+    toast('İptal edildi.');
     load();
   };
 
@@ -434,34 +454,61 @@ function Dinletiler({ me }) {
     <div class="stack-lg">
       <div class="stack">
         <h1 class="h page-h">Dinletiler</h1>
-        <p class="muted measure">Ayda iki dinleti günü. Çalmak isteyenler performans slotunu <b class="ink">${data.settings.dinleti_open_days} gün önceden</b> ayırabilir. Önce performans türünü seç, sonra boş bir slota tıkla.</p>
+        <p class="muted measure">Sahneye çıkmak mı istiyorsun? Bir dinleti ve saat seç, başvuru formunu doldur. Başvurular <b class="ink">${data.settings.dinleti_open_days} gün önceden</b> açılır. Yönetim kurulu seninle iletişime geçip gerekirse bir video ister; onaylanınca yerin kesinleşir.</p>
       </div>
-      <div class="card pad row">
-        <span class="strong">Performans türü:</span>
-        ${['Solo', 'Grup', 'Akustik'].map((o) => html`<${Pill} on=${type === o} onClick=${() => setType(o)}>${o}<//>`)}
-        <label class="lbl grow"><span>Sahne / grup adı (isteğe bağlı)</span><input class="inp" value=${performer} onInput=${(e) => setPerformer(e.target.value)} maxlength="60" placeholder="Boş bırakırsan adın görünür" /></label>
-      </div>
+
+      ${apply ? html`
+        <form id="basvuru" class="card pad-lg stack" onSubmit=${submit}>
+          <div class="stack-xs">
+            <span class="tag tag-red self-start">Dinleti başvurusu</span>
+            <h2 class="h2">${fmtLong(apply.d.day)} · ${addMinutes(apply.d.start_time, apply.i * apply.d.slot_minutes)}</h2>
+            <span class="muted small">${[apply.d.title, apply.d.venue].filter(Boolean).join(' · ')} · ${apply.d.slot_minutes} dakikalık performans</span>
+          </div>
+          <fieldset class="fs"><legend>Performans türü</legend>
+            <div class="row">${['Solo', 'Grup', 'Akustik'].map((o) => html`<${Pill} on=${apply.perf_type === o} onClick=${() => setApply({ ...apply, perf_type: o, people_count: o === 'Grup' ? Math.max(2, +apply.people_count || 2) : apply.people_count })}>${o}<//>`)}</div>
+          </fieldset>
+          <div class="fgrid">
+            <${Field} label="Sahne / grup adı" hint="Boş bırakırsan adın görünür"><input class="inp" maxlength="80" value=${apply.performer} onInput=${set('performer')} /><//>
+            <${Field} label="Kaç kişisiniz?"><input class="inp" type="number" min="1" max="30" value=${apply.people_count} onInput=${set('people_count')} /><//>
+          </div>
+          ${+apply.people_count > 1 ? html`
+            <${Field} label="Ekipte kimler var, kim ne çalıyor?"><textarea class="inp" rows="2" maxlength="500" value=${apply.members} onInput=${set('members')} placeholder="Örn. Ali – gitar, Ayşe – vokal, Can – davul"></textarea><//>` : null}
+          <${Field} label="Çalacağın / söyleyeceğin parçalar *"><textarea class="inp" rows="3" maxlength="1000" required value=${apply.repertoire} onInput=${set('repertoire')} placeholder="Sanatçı – Şarkı adı (her satıra bir parça)"></textarea><//>
+          <${Field} label="Video ya da kayıt linki" hint="Seni ya da grubunu çalarken gösteren bir YouTube, Instagram ya da Drive linki. Değerlendirmeyi hızlandırır."><input class="inp" type="url" inputmode="url" maxlength="500" value=${apply.video_url} onInput=${set('video_url')} placeholder="https://" /><//>
+          <fieldset class="fs"><legend>Ekipman ihtiyacı</legend>
+            <div class="row">${EQUIPMENT.map((x) => html`<label class="check"><input type="checkbox" checked=${apply.equipment.includes(x)} onChange=${() => toggleEq(x)} />${x}</label>`)}</div>
+          </fieldset>
+          <${Field} label="Eklemek istediğin bir şey var mı?"><textarea class="inp" rows="2" maxlength="1000" value=${apply.note} onInput=${set('note')}></textarea><//>
+          <div class="row">
+            <button type="submit" class="btn btn-red" disabled=${busy}>${busy ? 'Gönderiliyor…' : 'Başvuruyu gönder'}</button>
+            <button type="button" class="btn btn-ghost" onClick=${() => setApply(null)}>Vazgeç</button>
+          </div>
+        </form>` : null}
+
       ${data.list.length === 0 ? html`<p class="muted">Yaklaşan dinleti tarihi henüz eklenmedi.</p>` : html`
         <div class="cards cards-wide">
           ${data.list.map((d) => {
             const opens = addDays(d.day, -data.settings.dinleti_open_days);
-            const open = today >= opens;
+            const isOpen = today >= opens;
+            const mineHere = data.bookings.find((x) => x.dinleti_id === d.id && x.user_id === uid);
             return html`
               <div class="card pad stack">
-                <div class="row between"><h2 class="h2">${fmtLong(d.day)}</h2><span class=${'tag ' + (open ? 'tag-red' : 'tag-cream')}>${open ? 'Rezervasyon açık' : 'Henüz kapalı'}</span></div>
-                <span class="muted small">${[d.title, d.venue, hhmm(d.start_time) + ' başlangıç'].filter(Boolean).join(' · ')}</span>
+                <div class="row between"><h2 class="h2">${fmtLong(d.day)}</h2><span class=${'tag ' + (isOpen ? 'tag-red' : 'tag-cream')}>${isOpen ? 'Başvurular açık' : 'Henüz kapalı'}</span></div>
+                <span class="muted small">${[d.title, d.venue, hhmm(d.start_time) + ' başlangıç', d.slot_minutes + ' dk / performans'].filter(Boolean).join(' · ')}</span>
                 ${d.note ? html`<p class="muted small">${d.note}</p>` : null}
-                ${open ? html`
+                ${isOpen ? html`
                   <div class="stack-sm">
                     ${Array.from({ length: d.slot_count }, (_, i) => {
-                      const b = data.bookings.find((x) => x.dinleti_id === d.id && x.slot_index === i);
-                      const mine = b && b.user_id === uid;
+                      const approved = data.bookings.find((x) => x.dinleti_id === d.id && x.slot_index === i && x.status === 'onaylandi');
+                      const mine = mineHere && mineHere.slot_index === i ? mineHere : null;
                       const t = addMinutes(d.start_time, i * d.slot_minutes);
-                      if (mine) return html`<button type="button" class="dslot dslot-mine" onClick=${() => cancel(b)}><b>${t}</b><span>Sen · ${b.perf_type} · iptal için tıkla</span></button>`;
-                      if (b) return html`<div class="dslot dslot-taken"><b>${t}</b><span>${b.display_name} · ${b.perf_type}</span></div>`;
-                      return html`<button type="button" class="dslot" disabled=${busy} onClick=${() => book(d, i)}><b>${t}</b><span>Boş · tıkla, ayır</span></button>`;
+                      if (mine && mine.status === 'onaylandi') return html`<button type="button" class="dslot dslot-mine" onClick=${() => cancel(mine)}><b>${t}</b><span>Sen · ${mine.perf_type} · onaylandı</span></button>`;
+                      if (approved) return html`<div class="dslot dslot-taken"><b>${t}</b><span>${approved.display_name} · ${approved.perf_type}</span></div>`;
+                      if (mine) return html`<button type="button" class="dslot dslot-pending" onClick=${() => cancel(mine)}><b>${t}</b><span>Başvurun değerlendiriliyor · geri çek</span></button>`;
+                      if (mineHere) return html`<div class="dslot dslot-free"><b>${t}</b><span>Boş</span></div>`;
+                      return html`<button type="button" class="dslot" onClick=${() => open(d, i)}><b>${t}</b><span>${gate.reason === 'login' ? 'Giriş yap ve başvur' : 'Boş · başvur'}</span></button>`;
                     })}
-                  </div>` : html`<div class="locked locked-sm"><span class="strong">Rezervasyon ${fmtLong(opens)} açılır</span></div>`}
+                  </div>` : html`<div class="locked locked-sm"><span class="strong">Başvurular ${fmtLong(opens)} açılır</span></div>`}
               </div>`;
           })}
         </div>`}
@@ -693,7 +740,7 @@ function Profil({ me, refresh }) {
     const [{ data: pv }, { data: ls }, { data: dn }] = await Promise.all([
       sb.from('prova_bookings').select('id,day,status,prova_slots(start_time,end_time)').eq('user_id', uid).gte('day', today).neq('status', 'reddedildi').order('day'),
       sb.from('lesson_bookings').select('id,weekday,hour,status,instructors(full_name,instrument)').eq('user_id', uid).neq('status', 'reddedildi'),
-      sb.from('dinleti_bookings').select('id,slot_index,perf_type,dinletiler(day,start_time,slot_minutes)').eq('user_id', uid)
+      sb.from('dinleti_bookings').select('id,slot_index,perf_type,status,dinletiler(day,start_time,slot_minutes)').eq('user_id', uid).neq('status', 'reddedildi')
     ]);
     setMine({ pv: pv || [], ls: ls || [], dn: (dn || []).filter((d) => d.dinletiler && d.dinletiler.day >= today) });
   };
@@ -747,7 +794,7 @@ function Profil({ me, refresh }) {
           <ul class="list">
             ${mine.pv.map((r) => html`<li><span><b>Prova odası</b> · ${fmtLong(r.day)} · ${hhmm(r.prova_slots && r.prova_slots.start_time)}–${hhmm(r.prova_slots && r.prova_slots.end_time)} · ${r.status === 'onaylandi' ? html`<span class="tag tag-dark">Onaylandı</span>` : html`<span class="tag tag-cream">Onay bekliyor</span>`}</span><button type="button" class="link-btn" onClick=${() => del('prova_bookings', r.id)}>İptal</button></li>`)}
             ${mine.ls.map((r) => html`<li><span><b>${r.instructors ? r.instructors.instrument + ' dersi' : 'Ders'}</b> · ${r.instructors ? r.instructors.full_name : ''} · her ${DAY_NAMES[r.weekday]} ${r.hour}:00 · ${r.status === 'onaylandi' ? html`<span class="tag tag-dark">Onaylandı</span>` : html`<span class="tag tag-cream">Onay bekliyor</span>`}</span><button type="button" class="link-btn" onClick=${() => del('lesson_bookings', r.id)}>İptal</button></li>`)}
-            ${mine.dn.map((r) => html`<li><span><b>Dinleti</b> · ${fmtLong(r.dinletiler.day)} · ${addMinutes(r.dinletiler.start_time, r.slot_index * r.dinletiler.slot_minutes)} · ${r.perf_type}</span><button type="button" class="link-btn" onClick=${() => del('dinleti_bookings', r.id)}>İptal</button></li>`)}
+            ${mine.dn.map((r) => html`<li><span><b>Dinleti</b> · ${fmtLong(r.dinletiler.day)} · ${addMinutes(r.dinletiler.start_time, r.slot_index * r.dinletiler.slot_minutes)} · ${r.perf_type} · ${r.status === 'onaylandi' ? html`<span class="tag tag-dark">Onaylandı</span>` : html`<span class="tag tag-cream">Değerlendiriliyor</span>`}</span><button type="button" class="link-btn" onClick=${() => del('dinleti_bookings', r.id)}>İptal</button></li>`)}
           </ul>`}
       </div>
 

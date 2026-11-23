@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, staffEmail, errMsg, toast, Toaster, adminApi, PERMS,
   todayStr, fmtLong, fmtShort, fmtDateTime, hhmm, addMinutes, nextFridays, DAY_NAMES,
-  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, waLink, timeTR
+  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, notifyDinleti, waLink, timeTR
 } from './lib.js';
 
 const parseRoute = () => (location.hash.replace(/^#\/?/, '') || '').split('/')[0] || '';
@@ -864,12 +864,17 @@ function DinletiAdmin() {
   const [edit, setEdit] = useState(null);
   const [view, setView] = useState(null);
   const [showPast, setShowPast] = useState(false);
+  const [reqs, setReqs] = useState([]);
+  const [busy, setBusy] = useState(false);
   const today = todayStr();
 
   const load = useCallback(async () => {
+    const { data: r, error: re } = await sb.rpc('dinleti_requests', { p_from: todayStr() });
+    if (re) toast(errMsg(re), 'err');
+    setReqs((r || []).filter((x) => x.status === 'bekliyor'));
     const [{ data: d }, { data: b }, { data: s }] = await Promise.all([
       sb.from('dinletiler').select('*').order('day'),
-      sb.from('dinleti_bookings').select('dinleti_id'),
+      sb.from('dinleti_bookings').select('dinleti_id').eq('status', 'onaylandi'),
       sb.from('settings').select('id,prova_open_days,prova_max_per_week,dinleti_open_days').eq('id', 1).single()
     ]);
     const c = {};
@@ -887,8 +892,28 @@ function DinletiAdmin() {
     toast('Kural kaydedildi.');
   };
 
+  const decide = async (r, status) => {
+    if (status === 'reddedildi' && !confirm(r.display_name + ' başvurusu reddedilsin mi?')) return;
+    setBusy(true);
+    const { error } = await sb.rpc('decide_dinleti', { p_id: r.id, p_status: status });
+    setBusy(false);
+    if (error) return toast(errMsg(error), 'err');
+    notifyDinleti('notify_decision', r.id);
+    toast(status === 'onaylandi' ? 'Başvuru onaylandı.' : 'Başvuru reddedildi.');
+    load();
+  };
+
   return html`
     <div class="stack-lg">
+      <section class="stack">
+        <div class="toolbar">
+          <h2 class="h2">Bekleyen başvurular <span class="count">${reqs.length}</span></h2>
+          <span class="muted small">Yeni başvurular, dinleti yetkisi olan ve e-postası kayıtlı yetkililere e-postayla da gider.</span>
+        </div>
+        ${reqs.length === 0 ? html`<div class="panel"><${Empty}>Bekleyen başvuru yok.<//></div>` : html`
+          <div class="req-cards">${reqs.map((r) => html`<${DinletiRequestCard} r=${r} busy=${busy} onDecide=${decide} />`)}</div>`}
+      </section>
+
       <form class="panel pad row align-end" onSubmit=${saveSettings}>
         <${Field} label="Rezervasyon kaç gün önceden açılsın?"><input class="inp" type="number" min="0" max="90" value=${st.dinleti_open_days} onInput=${(e) => setSt({ ...st, dinleti_open_days: e.target.value })} /><//>
         <button type="submit" class="btn btn-dark">Kaydet</button>
@@ -919,6 +944,37 @@ function DinletiAdmin() {
       ${view ? html`<${DinletiBookings} d=${view} onClose=${() => { setView(null); load(); }} />` : null}
     </div>`;
 }
+function DinletiRequestCard({ r, busy, onDecide, onCancel }) {
+  const t = addMinutes(r.start_time, r.slot_index * r.slot_minutes);
+  return html`
+    <div class="panel pad stack-sm req-card">
+      <div class="row between">
+        <b class="req-when">${fmtLong(r.day)} · ${t}–${addMinutes(t, r.slot_minutes)}</b>
+        <span class="sub">Başvuru: ${fmtDateTime(r.created_at)}</span>
+      </div>
+      <div class="req-who">
+        <b>${r.display_name}</b>
+        <span class="sub">${r.perf_type}${r.people_count > 1 ? ' · ' + r.people_count + ' kişi' : ''}</span>
+      </div>
+      ${r.members ? html`<div class="sub pre"><b>Ekip:</b> ${r.members}</div>` : null}
+      <div class="req-note pre"><b>Parçalar:</b>\n${r.repertoire}</div>
+      ${r.video_url ? html`<a class="btn btn-sm btn-dark self-start" href=${r.video_url} target="_blank" rel="noopener">Videoyu aç ↗</a>` : html`<span class="sub">Video eklenmemiş, isteyebilirsin.</span>`}
+      ${(r.equipment || []).length ? html`<div class="sub"><b>Ekipman:</b> ${r.equipment.join(', ')}</div>` : null}
+      ${r.note ? html`<div class="sub pre"><b>Not:</b> ${r.note}</div>` : null}
+      <div class="sub"><b>Başvuran:</b> ${r.full_name} · <span class="mono">${r.student_no}</span>${[r.department, r.class_year].filter(Boolean).length ? ' · ' + [r.department, r.class_year].filter(Boolean).join(' · ') : ''}</div>
+      <div class="row">
+        ${r.phone ? html`<a class="btn btn-sm btn-wa" href=${waLink(r.phone, 'Merhaba ' + r.full_name + ', BÜMT dinleti başvurun hakkında yazıyorum.')} target="_blank" rel="noopener">WhatsApp</a><a class="btn btn-sm btn-ghost" href=${'tel:' + r.phone}>${r.phone}</a>` : null}
+        ${r.contact_email ? html`<a class="btn btn-sm btn-ghost" href=${'mailto:' + r.contact_email}>${r.contact_email}</a>` : null}
+      </div>
+      ${onDecide ? html`
+        <div class="row">
+          <button type="button" class="btn btn-red" disabled=${busy} onClick=${() => onDecide(r, 'onaylandi')}>Onayla</button>
+          <button type="button" class="btn btn-ghost" disabled=${busy} onClick=${() => onDecide(r, 'reddedildi')}>Reddet</button>
+        </div>` : null}
+      ${onCancel ? html`<button type="button" class="btn btn-sm btn-danger self-start" onClick=${() => onCancel(r)}>Yeri iptal et</button>` : null}
+    </div>`;
+}
+
 const addDaysLocal = (s, n) => { const [y, m, d] = s.split('-').map(Number); const x = new Date(Date.UTC(y, m - 1, d + n)); return x.toISOString().slice(0, 10); };
 
 function DinletiEdit({ d, onClose, onSaved }) {
@@ -962,32 +1018,25 @@ function DinletiEdit({ d, onClose, onSaved }) {
 function DinletiBookings({ d, onClose }) {
   const [rows, setRows] = useState(null);
   const load = useCallback(async () => {
-    const { data } = await sb.from('dinleti_bookings').select('*, profiles(full_name, student_no, phone)').eq('dinleti_id', d.id).order('slot_index');
-    setRows(data || []);
+    const { data, error } = await sb.rpc('dinleti_requests', { p_from: d.day });
+    if (error) toast(errMsg(error), 'err');
+    setRows((data || []).filter((x) => x.dinleti_id === d.id && x.status === 'onaylandi'));
   }, [d.id]);
   useEffect(() => { load(); }, [load]);
   const del = async (b) => {
-    if (!confirm('Bu kayıt silinsin mi?')) return;
+    if (!confirm(b.display_name + ' adlı katılımcının yeri iptal edilsin mi?')) return;
     const { error } = await sb.from('dinleti_bookings').delete().eq('id', b.id);
     if (error) return toast(errMsg(error), 'err');
     load();
   };
-  const exp = () => downloadCSV('dinleti-' + d.day + '.csv', [['Saat', 'Sahne adı', 'Tür', 'Ad Soyad', 'Öğrenci no', 'Telefon'],
-    ...rows.map((b) => [addMinutes(d.start_time, b.slot_index * d.slot_minutes), b.display_name, b.perf_type, b.profiles ? b.profiles.full_name : '', b.profiles ? b.profiles.student_no : '', b.profiles ? b.profiles.phone : ''])]);
+  const exp = () => downloadCSV('dinleti-' + d.day + '.csv', [['Saat', 'Sahne adı', 'Tür', 'Kişi', 'Ekip', 'Parçalar', 'Ekipman', 'Video', 'Ad Soyad', 'Öğrenci no', 'Telefon'],
+    ...rows.map((b) => [addMinutes(d.start_time, b.slot_index * d.slot_minutes), b.display_name, b.perf_type, b.people_count, b.members, b.repertoire, (b.equipment || []).join(', '), b.video_url, b.full_name, b.student_no, b.phone])]);
   return html`
-    <${Modal} title=${fmtLong(d.day) + ' · katılımcılar'} wide=${true} onClose=${onClose}>
-      ${!rows ? html`<${Loading} />` : rows.length === 0 ? html`<${Empty}>Henüz kayıt yok.<//>` : html`
+    <${Modal} title=${fmtLong(d.day) + ' · onaylı katılımcılar'} wide=${true} onClose=${onClose}>
+      ${!rows ? html`<${Loading} />` : rows.length === 0 ? html`<${Empty}>Henüz onaylı katılımcı yok.<//>` : html`
         <div class="stack">
-          <button type="button" class="btn btn-ghost self-start" onClick=${exp}>CSV indir</button>
-          <div class="table-wrap"><table class="tbl">
-            <thead><tr><th>Saat</th><th>Sahne adı</th><th>Tür</th><th>Üye</th><th>Telefon</th><th></th></tr></thead>
-            <tbody>${rows.map((b) => html`<tr>
-              <td>${addMinutes(d.start_time, b.slot_index * d.slot_minutes)}</td><td><b>${b.display_name}</b></td><td>${b.perf_type}</td>
-              <td>${b.profiles ? b.profiles.full_name : ''}<div class="sub mono">${b.profiles ? b.profiles.student_no : ''}</div></td>
-              <td>${b.profiles ? b.profiles.phone : ''}</td>
-              <td class="actions"><button type="button" class="btn btn-sm btn-danger" onClick=${() => del(b)}>Sil</button></td>
-            </tr>`)}</tbody>
-          </table></div>
+          <button type="button" class="btn btn-ghost self-start" onClick=${exp}>Sahne listesini indir (CSV)</button>
+          <div class="req-cards">${rows.map((r) => html`<${DinletiRequestCard} r=${r} onCancel=${del} />`)}</div>
         </div>`}
     <//>`;
 }

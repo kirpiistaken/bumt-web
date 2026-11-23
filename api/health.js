@@ -25,6 +25,7 @@ module.exports = async (req, res) => {
     out.sql_002_ders_talepleri = await chk('/rest/v1/lesson_bookings?select=status&limit=1');
     out.sql_004_prova_talepleri = await chk('/rest/v1/prova_bookings?select=status&limit=1');
     out.sql_005_pazar_yoklama = await chk('/rest/v1/market_posts?select=id&limit=1');
+    out.sql_006_dinleti_basvurulari = await chk('/rest/v1/dinleti_bookings?select=status&limit=1');
     const a = await sb('/auth/v1/admin/users?per_page=1');
     out.auth_admin = a.ok ? 'ok' : ('hata ' + a.status + ': ' + JSON.stringify(a.data).slice(0, 160));
   }

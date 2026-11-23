@@ -68,6 +68,7 @@ export async function adminApi(action, body) {
 // Talep e-postaları (hata olsa bile akışı bozmaz)
 export const notifyLesson = (action, booking_id) => notifyApi('/api/lesson', action, booking_id);
 export const notifyProva = (action, booking_id) => notifyApi('/api/prova', action, booking_id);
+export const notifyDinleti = (action, booking_id) => notifyApi('/api/dinleti', action, booking_id);
 async function notifyApi(path, action, booking_id) {
   try {
     const { data: { session } } = await sb.auth.getSession();
