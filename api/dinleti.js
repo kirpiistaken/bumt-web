@@ -35,7 +35,7 @@ function requestMail(b, base, name) {
       ${row('Ekip', nl(b.members))}
       ${row('Parçalar', nl(b.repertoire))}
       ${row('Video / kayıt', b.video_url ? `<a href="${esc(b.video_url)}" style="color:#B3261A">${esc(b.video_url)}</a>` : '')}
-      ${row('Ekipman', esc((b.equipment || []).join(', ')))}
+      ${row('Getirecekleri ekipman', esc((b.equipment || []).join(', ')))}
       ${row('Not', nl(b.note))}
       ${row('Başvuran', esc(p.full_name) + ' (' + esc(p.student_no) + ')')}
       ${row('Telefon', esc(p.phone))}

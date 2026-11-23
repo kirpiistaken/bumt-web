@@ -959,7 +959,7 @@ function DinletiRequestCard({ r, busy, onDecide, onCancel }) {
       ${r.members ? html`<div class="sub pre"><b>Ekip:</b> ${r.members}</div>` : null}
       <div class="req-note pre"><b>Parçalar:</b>\n${r.repertoire}</div>
       ${r.video_url ? html`<a class="btn btn-sm btn-dark self-start" href=${r.video_url} target="_blank" rel="noopener">Videoyu aç ↗</a>` : html`<span class="sub">Video eklenmemiş, isteyebilirsin.</span>`}
-      ${(r.equipment || []).length ? html`<div class="sub"><b>Ekipman:</b> ${r.equipment.join(', ')}</div>` : null}
+      ${(r.equipment || []).length ? html`<div class="sub"><b>Getirecekleri ekipman:</b> ${r.equipment.join(', ')}</div>` : null}
       ${r.note ? html`<div class="sub pre"><b>Not:</b> ${r.note}</div>` : null}
       <div class="sub"><b>Başvuran:</b> ${r.full_name} · <span class="mono">${r.student_no}</span>${[r.department, r.class_year].filter(Boolean).length ? ' · ' + [r.department, r.class_year].filter(Boolean).join(' · ') : ''}</div>
       <div class="row">
@@ -1030,7 +1030,7 @@ function DinletiBookings({ d, onClose }) {
     if (error) return toast(errMsg(error), 'err');
     load();
   };
-  const exp = () => downloadCSV('dinleti-' + d.day + '.csv', [['Saat', 'Sahne adı', 'Tür', 'Kişi', 'Ekip', 'Parçalar', 'Ekipman', 'Video', 'Ad Soyad', 'Öğrenci no', 'Telefon'],
+  const exp = () => downloadCSV('dinleti-' + d.day + '.csv', [['Saat', 'Sahne adı', 'Tür', 'Kişi', 'Ekip', 'Parçalar', 'Getirecekleri ekipman', 'Video', 'Ad Soyad', 'Öğrenci no', 'Telefon'],
     ...rows.map((b) => [addMinutes(d.start_time, b.slot_index * d.slot_minutes), b.display_name, b.perf_type, b.people_count, b.members, b.repertoire, (b.equipment || []).join(', '), b.video_url, b.full_name, b.student_no, b.phone])]);
   return html`
     <${Modal} title=${fmtLong(d.day) + ' · onaylı katılımcılar'} wide=${true} onClose=${onClose}>

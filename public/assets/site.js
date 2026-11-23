@@ -209,7 +209,7 @@ function Prova({ me }) {
           <h2 class="h2">${fmtLong(w.f)}</h2>
           ${!hasMineThisWeek && gate.ok ? html`
             <label class="lbl"><span>Not (isteğe bağlı)</span>
-              <input class="inp" maxlength="300" value=${note} onInput=${(e) => setNote(e.target.value)} placeholder="Örn. 4 kişilik grubumuzla konser provası, davul seti gerekecek" />
+              <input class="inp" maxlength="300" value=${note} onInput=${(e) => setNote(e.target.value)} placeholder="Örn. 4 kişilik grubumuzla konser provası, kendi enstrümanlarımızı getireceğiz" />
             </label>` : null}
           ${data.slots.map((s) => {
             const approved = data.bookings.find((x) => x.slot_id === s.id && x.day === w.f && x.status === 'onaylandi');
@@ -391,8 +391,6 @@ function Kurslar({ me }) {
 // ---------------------------------------------------------------------
 // Dinletiler
 // ---------------------------------------------------------------------
-const EQUIPMENT = ['Mikrofon', 'Gitar amfisi', 'Bas amfisi', 'Davul seti', 'Klavye', 'Kendi ekipmanımız var'];
-
 function Dinletiler({ me }) {
   const [data, setData] = useState(null);
   const [apply, setApply] = useState(null); // { d, i, ...form }
@@ -418,11 +416,10 @@ function Dinletiler({ me }) {
 
   const open = (d, i) => {
     if (!gate.ok) return gateMessage(gate);
-    setApply({ d, i, perf_type: 'Solo', performer: '', people_count: 1, members: '', repertoire: '', video_url: '', equipment: [], note: '' });
+    setApply({ d, i, perf_type: 'Solo', performer: '', people_count: 1, members: '', repertoire: '', video_url: '', equipment: '', note: '' });
     setTimeout(() => { const el = document.getElementById('basvuru'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
   };
   const set = (k) => (e) => setApply({ ...apply, [k]: e.target.value });
-  const toggleEq = (x) => setApply({ ...apply, equipment: apply.equipment.includes(x) ? apply.equipment.filter((y) => y !== x) : [...apply.equipment, x] });
 
   const submit = async (e) => {
     e.preventDefault();
@@ -433,7 +430,7 @@ function Dinletiler({ me }) {
     const { data: row, error } = await sb.from('dinleti_bookings').insert({
       dinleti_id: apply.d.id, slot_index: apply.i, perf_type: apply.perf_type, performer: apply.performer.trim(),
       people_count: apply.perf_type === 'Grup' ? Math.max(2, +apply.people_count || 2) : (+apply.people_count || 1),
-      members: apply.members.trim(), repertoire: apply.repertoire.trim(), video_url: video, equipment: apply.equipment, note: apply.note.trim()
+      members: apply.members.trim(), repertoire: apply.repertoire.trim(), video_url: video, equipment: apply.equipment.split(',').map((x) => x.trim()).filter(Boolean), note: apply.note.trim()
     }).select('id').single();
     if (error) { setBusy(false); toast(errMsg(error), 'err'); return load(); }
     await notifyDinleti('notify_request', row.id);
@@ -475,9 +472,7 @@ function Dinletiler({ me }) {
             <${Field} label="Ekipte kimler var, kim ne çalıyor?"><textarea class="inp" rows="2" maxlength="500" value=${apply.members} onInput=${set('members')} placeholder="Örn. Ali – gitar, Ayşe – vokal, Can – davul"></textarea><//>` : null}
           <${Field} label="Çalacağın / söyleyeceğin parçalar *"><textarea class="inp" rows="3" maxlength="1000" required value=${apply.repertoire} onInput=${set('repertoire')} placeholder="Sanatçı – Şarkı adı (her satıra bir parça)"></textarea><//>
           <${Field} label="Video ya da kayıt linki" hint="Seni ya da grubunu çalarken gösteren bir YouTube, Instagram ya da Drive linki. Değerlendirmeyi hızlandırır."><input class="inp" type="url" inputmode="url" maxlength="500" value=${apply.video_url} onInput=${set('video_url')} placeholder="https://" /><//>
-          <fieldset class="fs"><legend>Ekipman ihtiyacı</legend>
-            <div class="row">${EQUIPMENT.map((x) => html`<label class="check"><input type="checkbox" checked=${apply.equipment.includes(x)} onChange=${() => toggleEq(x)} />${x}</label>`)}</div>
-          </fieldset>
+          <${Field} label="Kendi getireceğin ekipmanlar" hint="Topluluk ekipman sağlayamıyor; performans için gereken her şeyi kendin getirmelisin. Virgülle ayır."><input class="inp" maxlength="300" value=${apply.equipment} onInput=${set('equipment')} placeholder="Örn. akustik gitar, kendi mikrofonumuz, kablolar" /><//>
           <${Field} label="Eklemek istediğin bir şey var mı?"><textarea class="inp" rows="2" maxlength="1000" value=${apply.note} onInput=${set('note')}></textarea><//>
           <div class="row">
             <button type="submit" class="btn btn-red" disabled=${busy}>${busy ? 'Gönderiliyor…' : 'Başvuruyu gönder'}</button>

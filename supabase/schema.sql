@@ -498,7 +498,7 @@ with f as (
       {"id":"telefon","label":"Telefon (WhatsApp)","type":"tel","required":true},
       {"id":"kisi","label":"Grupsa kaç kişisiniz?","type":"number","required":false},
       {"id":"parcalar","label":"Çalacağın / söyleyeceğin parça(lar)","type":"text","required":true},
-      {"id":"ekipman","label":"Ekipman ihtiyacı","type":"checkbox","options":["Mikrofon","Gitar amfisi","Bas amfisi","Davul seti","Klavye"],"required":false},
+      {"id":"ekipman","label":"Kendi getireceğin ekipmanlar (topluluk ekipman sağlayamıyor)","type":"text","required":false},
       {"id":"not","label":"Eklemek istediğin bir şey var mı?","type":"textarea","required":false}
     ]'::jsonb)
   returning id
