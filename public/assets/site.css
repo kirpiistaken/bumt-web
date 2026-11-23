@@ -121,6 +121,7 @@ p { margin: 0; }
 .slot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-radius: 14px; background: #fff; border: 2px solid var(--ink); }
 .slot-mine { background: var(--pink); border-color: var(--red); }
 .slot-taken { background: #F1ECE1; border-color: var(--line); }
+.slot-pending { background: var(--cream); border-style: dashed; }
 .slot-time { font-size: 26px; }
 .locked { border: 2px dashed var(--line2); border-radius: 16px; padding: 40px 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .locked-sm { padding: 22px; }

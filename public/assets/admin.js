@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, staffEmail, errMsg, toast, Toaster, adminApi, PERMS,
   todayStr, fmtLong, fmtShort, fmtDateTime, hhmm, addMinutes, nextFridays, DAY_NAMES,
-  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor
+  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, waLink
 } from './lib.js';
 
 const parseRoute = () => (location.hash.replace(/^#\/?/, '') || '').split('/')[0] || '';
@@ -158,12 +158,13 @@ function Dashboard({ me }) {
       const q = [];
       q.push(me.can('uyeler') ? sb.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'bekliyor').eq('is_staff', false) : Promise.resolve({ count: null }));
       q.push(me.can('uyeler') ? sb.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'onaylandi').eq('is_staff', false) : Promise.resolve({ count: null }));
-      q.push(sb.from('prova_bookings').select('id', { count: 'exact', head: true }).eq('day', fri));
+      q.push(sb.from('prova_bookings').select('id', { count: 'exact', head: true }).eq('day', fri).eq('status', 'onaylandi'));
       q.push(sb.from('prova_slots').select('id', { count: 'exact', head: true }).eq('active', true));
       q.push(sb.from('dinletiler').select('day').eq('active', true).gte('day', today).order('day').limit(1));
       q.push(me.can('formlar') ? sb.from('form_responses').select('id', { count: 'exact', head: true }) : Promise.resolve({ count: null }));
-      const [pend, appr, pv, slots, dn, fr] = await Promise.all(q);
-      setS({ fri, pend: pend.count, appr: appr.count, pv: pv.count || 0, slots: slots.count || 0, dn: dn.data && dn.data[0] ? dn.data[0].day : null, fr: fr.count });
+      q.push(me.can('prova') ? sb.from('prova_bookings').select('id', { count: 'exact', head: true }).eq('status', 'bekliyor').gte('day', today) : Promise.resolve({ count: null }));
+      const [pend, appr, pv, slots, dn, fr, pq] = await Promise.all(q);
+      setS({ fri, pend: pend.count, appr: appr.count, pv: pv.count || 0, slots: slots.count || 0, dn: dn.data && dn.data[0] ? dn.data[0].day : null, fr: fr.count, pq: pq.count });
     })();
   }, []);
   if (!s) return html`<${Loading} />`;
@@ -173,7 +174,8 @@ function Dashboard({ me }) {
       <div class="stats">
         ${s.pend != null ? html`<a class="stat" href="#/uyeler"><span>Onay bekleyen üye</span><b class=${s.pend ? 'red' : ''}>${s.pend}</b></a>` : null}
         ${s.appr != null ? html`<a class="stat" href="#/uyeler"><span>Onaylı üye</span><b>${s.appr}</b></a>` : null}
-        <a class="stat" href="#/prova"><span>${fmtShort(s.fri)} cuma provası</span><b>${s.pv} / ${s.slots}</b></a>
+        ${s.pq != null ? html`<a class="stat" href="#/prova"><span>Bekleyen prova talebi</span><b class=${s.pq ? 'red' : ''}>${s.pq}</b></a>` : null}
+        <a class="stat" href="#/prova"><span>${fmtShort(s.fri)} cuma (onaylı)</span><b>${s.pv} / ${s.slots}</b></a>
         <a class="stat" href="#/dinletiler"><span>Sıradaki dinleti</span><b class="stat-sm">${s.dn ? fmtShort(s.dn) : '—'}</b></a>
         ${s.fr != null ? html`<a class="stat" href="#/formlar"><span>Form başvurusu (toplam)</span><b>${s.fr}</b></a>` : null}
       </div>
@@ -364,7 +366,7 @@ function Roller({ me }) {
   const load = useCallback(async () => {
     const [{ data: r }, { data: s }] = await Promise.all([
       sb.from('roles').select('*').order('name'),
-      sb.from('profiles').select('id,full_name,username,student_no,is_super,is_staff,role_id').or('is_super.eq.true,is_staff.eq.true,role_id.not.is.null').order('full_name')
+      sb.from('profiles').select('id,full_name,username,student_no,is_super,is_staff,role_id,contact_email,notify_mail').or('is_super.eq.true,is_staff.eq.true,role_id.not.is.null').order('full_name')
     ]);
     setRoles(r || []);
     setStaff(s || []);
@@ -401,6 +403,12 @@ function Roller({ me }) {
     toast('Rol güncellendi.');
     load();
   };
+  const setField = async (p, k, v) => {
+    const { error } = await sb.from('profiles').update({ [k]: v }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('Kaydedildi.');
+    load();
+  };
   const resetPw = async (p) => {
     const pw = prompt('Yeni şifre (en az 6 karakter):', randomPw());
     if (!pw) return;
@@ -415,10 +423,10 @@ function Roller({ me }) {
     <div class="stack-lg">
       <section class="stack">
         <div class="toolbar"><h2 class="h2">Yetkililer</h2><button type="button" class="btn btn-red" onClick=${() => setAdding(true)}>Yeni yönetim hesabı</button></div>
-        <p class="muted small">Yönetim hesapları kullanıcı adıyla girer. Bir üyeye rol vermek için Üyeler bölümünden üyeyi düzenle; o üye yönetim paneline öğrenci numarasıyla girer.</p>
+        <p class="muted small">Yönetim hesapları kullanıcı adıyla girer. Bir üyeye rol vermek için Üyeler bölümünden üyeyi düzenle; o üye yönetim paneline öğrenci numarasıyla girer. Talep e-postaları (ör. prova odası), o işin yetkisi olan, e-postası yazılı ve "E-posta alsın" işaretli kişilere gider.</p>
         <div class="panel table-wrap">
           <table class="tbl">
-            <thead><tr><th>Ad</th><th>Giriş adı</th><th>Rol</th><th></th></tr></thead>
+            <thead><tr><th>Ad</th><th>Giriş adı</th><th>Rol</th><th>Bildirim e-postası</th><th>E-posta alsın</th><th></th></tr></thead>
             <tbody>
               ${staff.map((p) => html`
                 <tr>
@@ -428,6 +436,8 @@ function Roller({ me }) {
                     <select class="inp inp-sm" aria-label="Rol" value=${p.role_id || ''} onChange=${(e) => setRole(p, e.target.value)}>
                       <option value="">Rol yok</option>${roles.map((r) => html`<option value=${r.id}>${r.name}</option>`)}
                     </select>`}</td>
+                  <td><input class="inp inp-sm" type="email" aria-label="Bildirim e-postası" placeholder="ornek@gmail.com" value=${p.contact_email || ''} onChange=${(e) => setField(p, 'contact_email', e.target.value.trim())} /></td>
+                  <td class="c"><input type="checkbox" class="cb" aria-label="E-posta bildirimi alsın" checked=${p.notify_mail !== false} onChange=${(e) => setField(p, 'notify_mail', e.target.checked)} /></td>
                   <td class="actions">
                     ${!p.is_super || me.profile.is_super ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => resetPw(p)}>Şifre sıfırla</button>` : null}
                     ${p.is_staff && !p.is_super && p.id !== me.user.id ? html`<button type="button" class="btn btn-sm btn-danger" onClick=${() => remove(p)}>Sil</button>` : null}
@@ -466,7 +476,7 @@ function Roller({ me }) {
 }
 
 function StaffAdd({ roles, onClose, onSaved }) {
-  const [f, setF] = useState({ username: '', full_name: '', password: randomPw(), role_id: roles[0] ? roles[0].id : '' });
+  const [f, setF] = useState({ username: '', full_name: '', contact_email: '', password: randomPw(), role_id: roles[0] ? roles[0].id : '' });
   const [busy, setBusy] = useState(false);
   const save = async (e) => {
     e.preventDefault();
@@ -481,6 +491,7 @@ function StaffAdd({ roles, onClose, onSaved }) {
           <${Field} label="Kullanıcı adı" hint="Harf, rakam, nokta, tire"><input class="inp" required value=${f.username} onInput=${(e) => setF({ ...f, username: e.target.value })} /><//>
           <${Field} label="Ad Soyad"><input class="inp" required value=${f.full_name} onInput=${(e) => setF({ ...f, full_name: e.target.value })} /><//>
           <${Field} label="Geçici şifre"><input class="inp mono" required minlength="6" value=${f.password} onInput=${(e) => setF({ ...f, password: e.target.value })} /><//>
+          <${Field} label="E-posta" hint="Talep bildirimleri için"><input class="inp" type="email" value=${f.contact_email} onInput=${(e) => setF({ ...f, contact_email: e.target.value })} /><//>
           <${Field} label="Rol"><select class="inp" value=${f.role_id} onChange=${(e) => setF({ ...f, role_id: e.target.value })}>
             <option value="">Rol yok</option>${roles.map((r) => html`<option value=${r.id}>${r.name}</option>`)}</select><//>
         </div>
@@ -495,16 +506,17 @@ function StaffAdd({ roles, onClose, onSaved }) {
 function ProvaAdmin() {
   const [st, setSt] = useState(null);
   const [slots, setSlots] = useState(null);
-  const [bookings, setBookings] = useState([]);
-  const fridays = nextFridays(3);
+  const [reqs, setReqs] = useState([]);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [{ data: s }, { data: sl }, { data: b }] = await Promise.all([
+    const [{ data: s }, { data: sl }, { data: r, error }] = await Promise.all([
       sb.from('settings').select('*').eq('id', 1).single(),
       sb.from('prova_slots').select('*').order('sort').order('start_time'),
-      sb.from('prova_bookings').select('*, profiles(full_name, student_no, phone)').in('day', fridays).order('day')
+      sb.rpc('prova_requests', { p_from: todayStr() })
     ]);
-    setSt(s); setSlots((sl || []).map((x) => ({ ...x, start_time: hhmm(x.start_time), end_time: hhmm(x.end_time) }))); setBookings(b || []);
+    if (error) toast(errMsg(error), 'err');
+    setSt(s); setSlots((sl || []).map((x) => ({ ...x, start_time: hhmm(x.start_time), end_time: hhmm(x.end_time) }))); setReqs(r || []);
   }, []);
   useEffect(() => { load(); }, [load]);
   if (!st || !slots) return html`<${Loading} />`;
@@ -525,26 +537,88 @@ function ProvaAdmin() {
   };
   const delSlot = async (s) => {
     if (!s.id) return setSlots(slots.filter((x) => x !== s));
-    if (!confirm(s.start_time + '–' + s.end_time + ' saati ve bu saatteki tüm rezervasyonlar silinsin mi?')) return;
+    if (!confirm(s.start_time + '–' + s.end_time + ' saati ve bu saatteki tüm talepler silinsin mi?')) return;
     const { error } = await sb.from('prova_slots').delete().eq('id', s.id);
     if (error) return toast(errMsg(error), 'err');
     load();
   };
-  const delBooking = async (b) => {
-    if (!confirm('Bu rezervasyon iptal edilsin mi?')) return;
-    const { error } = await sb.from('prova_bookings').delete().eq('id', b.id);
+  const decide = async (r, status) => {
+    if (status === 'reddedildi' && !confirm(r.full_name + ' adlı üyenin talebi reddedilsin mi?')) return;
+    setBusy(true);
+    const { error } = await sb.rpc('decide_prova', { p_id: r.id, p_status: status });
+    setBusy(false);
+    if (error) return toast(errMsg(error), 'err');
+    notifyProva('notify_decision', r.id);
+    toast(status === 'onaylandi' ? 'Rezervasyon onaylandı.' : 'Talep reddedildi.');
+    load();
+  };
+  const cancel = async (r) => {
+    if (!confirm(r.full_name + ' adına olan ' + fmtShort(r.day) + ' ' + hhmm(r.start_time) + ' rezervasyonu iptal edilsin mi?')) return;
+    const { error } = await sb.from('prova_bookings').delete().eq('id', r.id);
     if (error) return toast(errMsg(error), 'err');
     load();
   };
-  const slotLabel = (id) => { const s = slots.find((x) => x.id === id); return s ? s.start_time + '–' + s.end_time : '?'; };
+  const waiting = reqs.filter((r) => r.status === 'bekliyor');
+  const approved = reqs.filter((r) => r.status === 'onaylandi');
+  const music = (r) => r.member_type === 'muzisyen' ? 'Müzisyen' + ((r.instruments || []).length ? ' · ' + r.instruments.join(', ') : '') : 'Dinleyici';
+  const contact = (r) => html`
+    <div class="row">
+      ${r.phone ? html`<a class="btn btn-sm btn-wa" href=${waLink(r.phone, 'Merhaba ' + r.full_name + ', BÜMT prova odası talebin hakkında yazıyorum.')} target="_blank" rel="noopener">WhatsApp</a>
+        <a class="btn btn-sm btn-ghost" href=${'tel:' + r.phone}>${r.phone}</a>` : null}
+      ${r.contact_email ? html`<a class="btn btn-sm btn-ghost" href=${'mailto:' + r.contact_email}>${r.contact_email}</a>` : null}
+    </div>`;
 
   return html`
     <div class="stack-lg">
+      <section class="stack">
+        <div class="toolbar">
+          <h2 class="h2">Bekleyen talepler <span class="count">${waiting.length}</span></h2>
+          <span class="muted small">Yeni talepler, prova yetkisi olan ve e-postası kayıtlı yetkililere e-postayla da gider (Roller ve yetkililer sayfasından yönet).</span>
+        </div>
+        ${waiting.length === 0 ? html`<div class="panel"><${Empty}>Bekleyen talep yok.<//></div>` : html`
+          <div class="req-cards">
+            ${waiting.map((r) => html`
+              <div class="panel pad stack-sm req-card">
+                <div class="row between">
+                  <b class="req-when">${fmtLong(r.day)} · ${hhmm(r.start_time)}–${hhmm(r.end_time)}</b>
+                  <span class="sub">Talep: ${fmtDateTime(r.created_at)}</span>
+                </div>
+                <div class="req-who">
+                  <b>${r.full_name}</b>
+                  <span class="mono">${r.student_no}</span>
+                  <span class="sub">${[r.department, r.class_year].filter(Boolean).join(' · ')}</span>
+                  <span class="sub">${music(r)}</span>
+                </div>
+                ${r.note ? html`<p class="req-note">“${r.note}”</p>` : null}
+                ${contact(r)}
+                <div class="row">
+                  <button type="button" class="btn btn-red" disabled=${busy} onClick=${() => decide(r, 'onaylandi')}>Onayla</button>
+                  <button type="button" class="btn btn-ghost" disabled=${busy} onClick=${() => decide(r, 'reddedildi')}>Reddet</button>
+                </div>
+              </div>`)}
+          </div>`}
+      </section>
+
+      <section class="panel pad stack">
+        <h2 class="h2">Onaylı rezervasyonlar</h2>
+        ${approved.length === 0 ? html`<${Empty}>Yaklaşan onaylı rezervasyon yok.<//>` : html`
+          <div class="table-wrap"><table class="tbl">
+            <thead><tr><th>Tarih</th><th>Saat</th><th>Üye</th><th>İletişim</th><th></th></tr></thead>
+            <tbody>${approved.map((r) => html`
+              <tr>
+                <td>${fmtLong(r.day)}</td><td>${hhmm(r.start_time)}–${hhmm(r.end_time)}</td>
+                <td><b>${r.full_name}</b><div class="sub mono">${r.student_no}</div>${r.note ? html`<div class="sub">“${r.note}”</div>` : null}</td>
+                <td>${r.phone ? html`<a href=${waLink(r.phone)} target="_blank" rel="noopener">WhatsApp</a> · ${r.phone}` : '—'}</td>
+                <td class="actions"><button type="button" class="btn btn-sm btn-danger" onClick=${() => cancel(r)}>İptal et</button></td>
+              </tr>`)}</tbody>
+          </table></div>`}
+      </section>
+
       <form class="panel pad stack" onSubmit=${saveSettings}>
-        <h2 class="h2">Rezervasyon kuralları</h2>
+        <h2 class="h2">Talep kuralları</h2>
         <div class="fgrid">
           <${Field} label="Kaç gün önceden açılsın?" hint="Cumadan geriye: 4 = o haftanın pazartesi"><input class="inp" type="number" min="0" max="60" value=${st.prova_open_days} onInput=${(e) => setSt({ ...st, prova_open_days: e.target.value })} /><//>
-          <${Field} label="Üye başına haftalık slot hakkı"><input class="inp" type="number" min="1" max="10" value=${st.prova_max_per_week} onInput=${(e) => setSt({ ...st, prova_max_per_week: e.target.value })} /><//>
+          <${Field} label="Üye başına haftalık saat hakkı"><input class="inp" type="number" min="1" max="10" value=${st.prova_max_per_week} onInput=${(e) => setSt({ ...st, prova_max_per_week: e.target.value })} /><//>
         </div>
         <button type="submit" class="btn btn-dark self-start">Kuralları kaydet</button>
       </form>
@@ -570,21 +644,6 @@ function ProvaAdmin() {
           </table>
         </div>
         <button type="button" class="btn btn-ghost self-start" onClick=${() => setSlots([...slots, { start_time: '18:00', end_time: '19:00', sort: slots.length + 1, active: true, dirty: true }])}>+ Saat ekle</button>
-      </section>
-
-      <section class="panel pad stack">
-        <h2 class="h2">Yaklaşan rezervasyonlar</h2>
-        ${bookings.length === 0 ? html`<${Empty}>Önümüzdeki 3 cuma için rezervasyon yok.<//>` : html`
-          <div class="table-wrap"><table class="tbl">
-            <thead><tr><th>Tarih</th><th>Saat</th><th>Üye</th><th>Telefon</th><th></th></tr></thead>
-            <tbody>${bookings.map((b) => html`
-              <tr>
-                <td>${fmtLong(b.day)}</td><td>${slotLabel(b.slot_id)}</td>
-                <td><b>${b.profiles ? b.profiles.full_name : b.display_name}</b>${b.profiles ? html`<div class="sub mono">${b.profiles.student_no}</div>` : null}</td>
-                <td>${b.profiles ? b.profiles.phone : ''}</td>
-                <td class="actions"><button type="button" class="btn btn-sm btn-danger" onClick=${() => delBooking(b)}>İptal et</button></td>
-              </tr>`)}</tbody>
-          </table></div>`}
       </section>
     </div>`;
 }
@@ -1092,6 +1151,7 @@ function Responses({ form, onClose }) {
 // ---------------------------------------------------------------------
 function Hesap({ me }) {
   const [pw, setPw] = useState({ a: '', b: '' });
+  const [mail, setMail] = useState({ contact_email: me.profile.contact_email || '', notify_mail: me.profile.notify_mail !== false });
   const submit = async (e) => {
     e.preventDefault();
     if (pw.a.length < 8) return toast('Yönetim hesabı şifresi en az 8 karakter olmalı.', 'err');
@@ -1101,14 +1161,29 @@ function Hesap({ me }) {
     setPw({ a: '', b: '' });
     toast('Şifren değiştirildi.');
   };
+  const saveMail = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from('profiles').update({ contact_email: mail.contact_email.trim(), notify_mail: mail.notify_mail }).eq('id', me.user.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('Bildirim ayarların kaydedildi.');
+  };
   return html`
-    <form class="panel pad stack narrow" onSubmit=${submit}>
-      <h2 class="h2">Şifre değiştir</h2>
-      <p class="muted small">Giriş adın: <b class="mono">${me.profile.username || me.profile.student_no}</b></p>
-      <${Field} label="Yeni şifre"><input class="inp" type="password" autocomplete="new-password" value=${pw.a} onInput=${(e) => setPw({ ...pw, a: e.target.value })} /><//>
-      <${Field} label="Yeni şifre (tekrar)"><input class="inp" type="password" autocomplete="new-password" value=${pw.b} onInput=${(e) => setPw({ ...pw, b: e.target.value })} /><//>
-      <button type="submit" class="btn btn-red self-start">Şifreyi değiştir</button>
-    </form>`;
+    <div class="stack-lg">
+      <form class="panel pad stack narrow" onSubmit=${saveMail}>
+        <h2 class="h2">Bildirimler</h2>
+        <p class="muted small">Yetkin olan işlerdeki yeni talepler (ör. prova odası) bu adrese e-postayla gelir.</p>
+        <${Field} label="E-posta adresin"><input class="inp" type="email" value=${mail.contact_email} onInput=${(e) => setMail({ ...mail, contact_email: e.target.value })} placeholder="ornek@gmail.com" /><//>
+        <label class="check"><input type="checkbox" checked=${mail.notify_mail} onChange=${(e) => setMail({ ...mail, notify_mail: e.target.checked })} />Talep e-postalarını almak istiyorum</label>
+        <button type="submit" class="btn btn-dark self-start">Kaydet</button>
+      </form>
+      <form class="panel pad stack narrow" onSubmit=${submit}>
+        <h2 class="h2">Şifre değiştir</h2>
+        <p class="muted small">Giriş adın: <b class="mono">${me.profile.username || me.profile.student_no}</b></p>
+        <${Field} label="Yeni şifre"><input class="inp" type="password" autocomplete="new-password" value=${pw.a} onInput=${(e) => setPw({ ...pw, a: e.target.value })} /><//>
+        <${Field} label="Yeni şifre (tekrar)"><input class="inp" type="password" autocomplete="new-password" value=${pw.b} onInput=${(e) => setPw({ ...pw, b: e.target.value })} /><//>
+        <button type="submit" class="btn btn-red self-start">Şifreyi değiştir</button>
+      </form>
+    </div>`;
 }
 
 // ---------------------------------------------------------------------

@@ -82,7 +82,7 @@ module.exports = async (req, res) => {
         email: u + '@yonetim.bumt.com.tr',
         password: String(body.password),
         email_confirm: true,
-        user_metadata: { full_name: body.full_name || '' },
+        user_metadata: { full_name: body.full_name || '', contact_email: body.contact_email || '' },
         app_metadata: { approved: true, is_staff: true, role_id: body.role_id || '' }
       })
     });

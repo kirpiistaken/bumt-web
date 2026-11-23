@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva
 } from './lib.js';
 
 const parseRoute = () => {
@@ -145,13 +145,14 @@ function Prova({ me }) {
   const [data, setData] = useState(null);
   const [week, setWeek] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
   const fridays = nextFridays(3);
 
   const load = useCallback(async () => {
     const [{ data: settings }, { data: slots }, { data: bookings }] = await Promise.all([
       sb.from('settings').select('*').eq('id', 1).single(),
       sb.from('prova_slots').select('*').eq('active', true).order('sort').order('start_time'),
-      sb.from('prova_bookings').select('id,slot_id,day,user_id,display_name').in('day', fridays)
+      sb.from('prova_bookings').select('id,slot_id,day,user_id,display_name,status').in('day', fridays).neq('status', 'reddedildi')
     ]);
     setData({ settings: settings || { prova_open_days: 4, prova_max_per_week: 1 }, slots: slots || [], bookings: bookings || [] });
   }, []);
@@ -167,60 +168,71 @@ function Prova({ me }) {
   const uid = me && me.user.id;
   const gate = bookingGate(me);
 
-  const book = async (slot) => {
+  const request = async (slot) => {
     if (!gate.ok) return gateMessage(gate);
     setBusy(true);
-    const { error } = await sb.from('prova_bookings').insert({ slot_id: slot.id, day: w.f });
+    const { data: row, error } = await sb.from('prova_bookings').insert({ slot_id: slot.id, day: w.f, note: note.trim() }).select('id').single();
+    if (error) { setBusy(false); toast(errMsg(error), 'err'); return load(); }
+    await notifyProva('notify_request', row.id);
     setBusy(false);
-    if (error) { toast(errMsg(error), 'err'); return load(); }
-    toast('Rezervasyonun alındı: ' + fmtShort(w.f) + ', ' + hhmm(slot.start_time) + '–' + hhmm(slot.end_time));
+    setNote('');
+    toast('Talebin yönetim kuruluna iletildi: ' + fmtShort(w.f) + ', ' + hhmm(slot.start_time) + '–' + hhmm(slot.end_time) + '. Onaylanınca kesinleşecek.');
     load();
   };
   const cancel = async (b) => {
-    if (!confirm('Rezervasyonunu iptal etmek istiyor musun?')) return;
+    if (!confirm(b.status === 'onaylandi' ? 'Rezervasyonunu iptal etmek istiyor musun?' : 'Talebini geri çekmek istiyor musun?')) return;
     setBusy(true);
     const { error } = await sb.from('prova_bookings').delete().eq('id', b.id);
     setBusy(false);
     if (error) return toast(errMsg(error), 'err');
-    toast('Rezervasyonun iptal edildi.');
+    toast(b.status === 'onaylandi' ? 'Rezervasyonun iptal edildi.' : 'Talebin geri çekildi.');
     load();
   };
+  const hasMineThisWeek = data.bookings.some((b) => b.day === w.f && b.user_id === uid);
 
   return html`
     <div class="stack-lg">
       <div class="stack">
         <h1 class="h page-h">Prova odası</h1>
-        <p class="muted measure">Topluluğun her cuma prova odası hakkı var. Bir cumanın rezervasyonu ${data.settings.prova_open_days === 4 ? html`o haftanın <b class="ink">pazartesi</b> günü` : html`<b class="ink">${data.settings.prova_open_days} gün önceden</b>`} açılır. Her üye haftada en fazla ${data.settings.prova_max_per_week} slot alabilir.</p>
+        <p class="muted measure">Topluluğun her cuma prova odası hakkı var. Bir cumanın talepleri ${data.settings.prova_open_days === 4 ? html`o haftanın <b class="ink">pazartesi</b> günü` : html`<b class="ink">${data.settings.prova_open_days} gün önceden</b>`} açılır. Boş bir saate talep gönder; yönetim kurulu onaylayınca rezervasyonun kesinleşir. Her üye haftada en fazla ${data.settings.prova_max_per_week} saat alabilir.</p>
       </div>
       <div class="row">
         ${weeks.map((x, i) => html`
           <button type="button" class=${'week ' + (i === week ? 'week-on' : '')} aria-pressed=${i === week} onClick=${() => setWeek(i)}>
             <b>${fmtShort(x.f)} Cuma</b>
-            <span class="small">${x.open ? 'Rezervasyon açık' : today > x.f ? 'Geçti' : fmtShort(x.opens) + ' açılır'}</span>
+            <span class="small">${x.open ? 'Talepler açık' : today > x.f ? 'Geçti' : fmtShort(x.opens) + ' açılır'}</span>
           </button>`)}
       </div>
       ${data.slots.length === 0 ? html`<p class="muted">Prova saatleri henüz tanımlanmadı.</p>` : w.open ? html`
         <div class="card pad stack">
           <h2 class="h2">${fmtLong(w.f)}</h2>
+          ${!hasMineThisWeek && gate.ok ? html`
+            <label class="lbl"><span>Not (isteğe bağlı)</span>
+              <input class="inp" maxlength="300" value=${note} onInput=${(e) => setNote(e.target.value)} placeholder="Örn. 4 kişilik grubumuzla konser provası, davul seti gerekecek" />
+            </label>` : null}
           ${data.slots.map((s) => {
-            const b = data.bookings.find((x) => x.slot_id === s.id && x.day === w.f);
-            const mine = b && b.user_id === uid;
+            const approved = data.bookings.find((x) => x.slot_id === s.id && x.day === w.f && x.status === 'onaylandi');
+            const mine = data.bookings.find((x) => x.slot_id === s.id && x.day === w.f && x.user_id === uid);
+            let status, cls, action;
+            if (mine && mine.status === 'onaylandi') { status = 'Senin rezervasyonun (onaylandı)'; cls = 'slot-mine'; action = html`<button type="button" class="btn btn-ghost" disabled=${busy} onClick=${() => cancel(mine)}>İptal et</button>`; }
+            else if (approved) { status = 'Dolu · ' + approved.display_name; cls = 'slot-taken'; action = html`<span class="btn btn-disabled" aria-hidden="true">Dolu</span>`; }
+            else if (mine) { status = 'Talebin onay bekliyor'; cls = 'slot-pending'; action = html`<button type="button" class="btn btn-ghost" disabled=${busy} onClick=${() => cancel(mine)}>Talebi geri çek</button>`; }
+            else { status = 'Boş'; cls = ''; action = html`<button type="button" class="btn btn-red" disabled=${busy || (hasMineThisWeek && gate.ok)} onClick=${() => request(s)}>${gate.reason === 'login' ? 'Giriş yap ve talep gönder' : 'Talep gönder'}</button>`; }
             return html`
-              <div class=${'slot ' + (mine ? 'slot-mine' : b ? 'slot-taken' : '')}>
+              <div class=${'slot ' + cls}>
                 <div class="stack-xs">
                   <span class="h slot-time">${hhmm(s.start_time)} – ${hhmm(s.end_time)}</span>
-                  <span class="small strong">${mine ? 'Senin rezervasyonun' : b ? 'Dolu · ' + b.display_name : 'Boş'}</span>
+                  <span class="small strong">${status}</span>
                 </div>
-                ${mine ? html`<button type="button" class="btn btn-ghost" disabled=${busy} onClick=${() => cancel(b)}>İptal et</button>`
-                  : b ? html`<span class="btn btn-disabled" aria-hidden="true">Dolu</span>`
-                  : html`<button type="button" class="btn btn-red" disabled=${busy} onClick=${() => book(s)}>${gate.reason === 'login' ? 'Giriş yap ve rezerve et' : 'Rezerve et'}</button>`}
+                ${action}
               </div>`;
           })}
+          ${hasMineThisWeek ? html`<p class="muted small">Bu hafta için talebin var. Başka bir saat istiyorsan önce mevcut talebini geri çek.</p>` : null}
         </div>` : html`
         <div class="locked">
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
           <h2 class="h2">${fmtLong(w.f)} henüz kilitli</h2>
-          <p class="muted">Bu haftanın rezervasyonu <b class="ink">${fmtLong(w.opens)}</b> açılır.</p>
+          <p class="muted">Bu haftanın talepleri <b class="ink">${fmtLong(w.opens)}</b> açılır.</p>
         </div>`}
     </div>`;
 }
@@ -677,7 +689,7 @@ function Profil({ me, refresh }) {
     const uid = me.user.id;
     const today = todayStr();
     const [{ data: pv }, { data: ls }, { data: dn }] = await Promise.all([
-      sb.from('prova_bookings').select('id,day,prova_slots(start_time,end_time)').eq('user_id', uid).gte('day', today).order('day'),
+      sb.from('prova_bookings').select('id,day,status,prova_slots(start_time,end_time)').eq('user_id', uid).gte('day', today).neq('status', 'reddedildi').order('day'),
       sb.from('lesson_bookings').select('id,weekday,hour,status,instructors(full_name,instrument)').eq('user_id', uid).neq('status', 'reddedildi'),
       sb.from('dinleti_bookings').select('id,slot_index,perf_type,dinletiler(day,start_time,slot_minutes)').eq('user_id', uid)
     ]);
@@ -730,7 +742,7 @@ function Profil({ me, refresh }) {
         <h2 class="h2">Rezervasyonlarım</h2>
         ${!mine ? html`<${Loading} />` : (mine.pv.length + mine.ls.length + mine.dn.length) === 0 ? html`<p class="muted">Aktif rezervasyonun yok.</p>` : html`
           <ul class="list">
-            ${mine.pv.map((r) => html`<li><span><b>Prova odası</b> · ${fmtLong(r.day)} · ${hhmm(r.prova_slots && r.prova_slots.start_time)}–${hhmm(r.prova_slots && r.prova_slots.end_time)}</span><button type="button" class="link-btn" onClick=${() => del('prova_bookings', r.id)}>İptal</button></li>`)}
+            ${mine.pv.map((r) => html`<li><span><b>Prova odası</b> · ${fmtLong(r.day)} · ${hhmm(r.prova_slots && r.prova_slots.start_time)}–${hhmm(r.prova_slots && r.prova_slots.end_time)} · ${r.status === 'onaylandi' ? html`<span class="tag tag-dark">Onaylandı</span>` : html`<span class="tag tag-cream">Onay bekliyor</span>`}</span><button type="button" class="link-btn" onClick=${() => del('prova_bookings', r.id)}>İptal</button></li>`)}
             ${mine.ls.map((r) => html`<li><span><b>${r.instructors ? r.instructors.instrument + ' dersi' : 'Ders'}</b> · ${r.instructors ? r.instructors.full_name : ''} · her ${DAY_NAMES[r.weekday]} ${r.hour}:00 · ${r.status === 'onaylandi' ? html`<span class="tag tag-dark">Onaylandı</span>` : html`<span class="tag tag-cream">Onay bekliyor</span>`}</span><button type="button" class="link-btn" onClick=${() => del('lesson_bookings', r.id)}>İptal</button></li>`)}
             ${mine.dn.map((r) => html`<li><span><b>Dinleti</b> · ${fmtLong(r.dinletiler.day)} · ${addMinutes(r.dinletiler.start_time, r.slot_index * r.dinletiler.slot_minutes)} · ${r.perf_type}</span><button type="button" class="link-btn" onClick=${() => del('dinleti_bookings', r.id)}>İptal</button></li>`)}
           </ul>`}

@@ -65,11 +65,13 @@ export async function adminApi(action, body) {
   return d;
 }
 
-// Ders talebi e-postaları (hata olsa bile akışı bozmaz)
-export async function notifyLesson(action, booking_id) {
+// Talep e-postaları (hata olsa bile akışı bozmaz)
+export const notifyLesson = (action, booking_id) => notifyApi('/api/lesson', action, booking_id);
+export const notifyProva = (action, booking_id) => notifyApi('/api/prova', action, booking_id);
+async function notifyApi(path, action, booking_id) {
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const r = await fetch('/api/lesson', {
+    const r = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session ? session.access_token : '') },
       body: JSON.stringify({ action, booking_id })
