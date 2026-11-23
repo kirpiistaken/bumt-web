@@ -1,0 +1,6 @@
+{
+  "name": "bumt-web",
+  "private": true,
+  "description": "Başkent Üniversitesi Müzik Topluluğu web sitesi",
+  "engines": { "node": ">=18" }
+}
