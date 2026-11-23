@@ -1,8 +1,7 @@
 // Yönetim işlemleri: hesap oluşturma, şifre sıfırlama, hesap silme.
 // Gizli anahtar (SUPABASE_SECRET_KEY) sadece burada, sunucuda kullanılır.
 
-const SB_URL = (process.env.SUPABASE_URL || '').trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
-const SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const { SB_URL, SECRET, sb: admin, getCaller } = require('./_auth');
 
 function send(res, code, body) {
   res.statusCode = code;
@@ -17,32 +16,6 @@ async function readBody(req) {
   for await (const c of req) chunks.push(c);
   const raw = Buffer.concat(chunks).toString('utf8');
   return raw ? JSON.parse(raw) : {};
-}
-
-// Yeni "sb_secret_" anahtarları JWT değildir: önce sadece apikey ile dener,
-// reddedilirse Authorization başlığıyla tekrar dener (eski service_role anahtarı için).
-async function admin(path, opts = {}) {
-  const base = { apikey: SECRET, 'Content-Type': 'application/json' };
-  const doFetch = (headers) => fetch(SB_URL + path, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
-  let r = await doFetch(SECRET.startsWith('sb_') ? base : { ...base, Authorization: 'Bearer ' + SECRET });
-  if (r.status === 401 && SECRET.startsWith('sb_')) r = await doFetch({ ...base, Authorization: 'Bearer ' + SECRET });
-  const text = await r.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (e) { data = { raw: text }; }
-  return { ok: r.ok, status: r.status, data };
-}
-
-async function getCaller(req) {
-  const auth = req.headers.authorization || '';
-  if (!auth.startsWith('Bearer ')) return null;
-  const r = await fetch(SB_URL + '/auth/v1/user', { headers: { apikey: SECRET, Authorization: auth } });
-  if (!r.ok) return null;
-  const user = await r.json();
-  const p = await admin('/rest/v1/profiles?select=id,is_super,role_id,roles(permissions)&id=eq.' + encodeURIComponent(user.id));
-  const prof = p.ok && Array.isArray(p.data) ? p.data[0] : null;
-  if (!prof) return null;
-  const perms = (prof.roles && prof.roles.permissions) || [];
-  return { id: user.id, isSuper: !!prof.is_super, can: (k) => !!prof.is_super || perms.includes(k) };
 }
 
 async function getProfile(id) {
@@ -69,7 +42,7 @@ module.exports = async (req, res) => {
   try { body = await readBody(req); } catch (e) { return send(res, 400, { error: 'Geçersiz istek.' }); }
 
   const caller = await getCaller(req);
-  if (!caller) return send(res, 401, { error: 'Oturum bulunamadı, tekrar giriş yap.' });
+  if (caller.error) return send(res, 401, { error: caller.error });
 
   const action = body.action;
 

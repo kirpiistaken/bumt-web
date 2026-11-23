@@ -1,6 +1,5 @@
 // Ders talepleri: eğitmene / öğrenciye e-posta ve e-postadaki onay linkleri.
-const SB_URL = (process.env.SUPABASE_URL || '').trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
-const SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const { SB_URL, SECRET, sb, getCaller } = require('./_auth');
 const RESEND = process.env.RESEND_API_KEY || '';
 const MAIL_FROM = process.env.MAIL_FROM || 'BÜMT <bildirim@bumt.com.tr>';
 const DAYS = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
@@ -13,17 +12,6 @@ const waLink = (phone) => {
   return d ? 'https://wa.me/' + d : '';
 };
 const siteUrl = (req) => (process.env.SITE_URL || ('https://' + (req.headers['x-forwarded-host'] || req.headers.host))).replace(/\/$/, '');
-
-async function sb(path, opts = {}) {
-  const base = { apikey: SECRET, 'Content-Type': 'application/json' };
-  const doFetch = (h) => fetch(SB_URL + path, { ...opts, headers: { ...h, ...(opts.headers || {}) } });
-  let r = await doFetch(SECRET.startsWith('sb_') ? base : { ...base, Authorization: 'Bearer ' + SECRET });
-  if (r.status === 401 && SECRET.startsWith('sb_')) r = await doFetch({ ...base, Authorization: 'Bearer ' + SECRET });
-  const t = await r.text();
-  let data = null;
-  try { data = t ? JSON.parse(t) : null; } catch (e) { data = t; }
-  return { ok: r.ok, status: r.status, data };
-}
 
 async function loadBooking(filter) {
   const r = await sb('/rest/v1/lesson_bookings?select=id,instructor_id,weekday,hour,user_id,status,token,notified_at,created_at,' +
@@ -121,19 +109,6 @@ async function readForm(req) {
   return Object.fromEntries(new URLSearchParams(raw));
 }
 
-async function getCaller(req) {
-  const auth = req.headers.authorization || '';
-  if (!auth.startsWith('Bearer ')) return null;
-  const r = await fetch(SB_URL + '/auth/v1/user', { headers: { apikey: SECRET, Authorization: auth } });
-  if (!r.ok) return null;
-  const u = await r.json();
-  const p = await sb('/rest/v1/profiles?select=id,is_super,roles(permissions)&id=eq.' + u.id);
-  const prof = p.ok && p.data && p.data[0];
-  if (!prof) return null;
-  const perms = (prof.roles && prof.roles.permissions) || [];
-  return { id: u.id, can: (k) => !!prof.is_super || perms.includes(k) };
-}
-
 const json = (res, code, body) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(body)); };
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -179,7 +154,7 @@ module.exports = async (req, res) => {
 
   // Siteden gelen bildirim istekleri
   const caller = await getCaller(req);
-  if (!caller) return json(res, 401, { error: 'Oturum bulunamadı.' });
+  if (caller.error) return json(res, 401, { error: caller.error });
   if (!UUID.test(body.booking_id || '')) return json(res, 400, { error: 'Geçersiz talep.' });
   const b = await loadBooking('id=eq.' + body.booking_id);
   if (!b) return json(res, 404, { error: 'Talep bulunamadı.' });

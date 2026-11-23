@@ -60,6 +60,7 @@ p { margin: 0; }
 .tag-cream { background: var(--cream); color: var(--ink); border: 1px solid var(--ink); }
 .card { background: #fff; border: 2px solid var(--ink); border-radius: 16px; box-shadow: 5px 5px 0 var(--ink); }
 .pad { padding: 22px; }
+.card-off { background: var(--cream); }
 .pad-lg { padding: 28px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 26px; }
 .cards-wide { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }

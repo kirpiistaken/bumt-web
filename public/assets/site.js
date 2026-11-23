@@ -112,12 +112,6 @@ function Home() {
       ${events === null ? html`<${Loading} />` : events.length === 0 ? html`
         <p class="muted">Şu an duyurulmuş bir etkinlik yok. Takipte kal!</p>` : html`
         <div class="cards">${events.map((e, i) => html`<${EventCard} e=${e} i=${i} />`)}</div>`}
-    </section>
-
-    <section class="tiles">
-      <a class="tile" href="#/prova"><span class="h tile-big">Her cuma</span><b>Prova odası</b><span class="muted small">Haftanın rezervasyonu pazartesi açılır.</span></a>
-      <a class="tile" href="#/dinletiler"><span class="h tile-big">Ayda 2</span><b>Dinleti günü</b><span class="muted small">Solo, grup, akustik: önceden sahne ayır.</span></a>
-      <a class="tile" href="#/kurslar"><span class="h tile-big">Kurslar</span><b>Enstrüman dersleri</b><span class="muted small">Eğitmenin takviminden boş saati seç.</span></a>
     </section>`;
 }
 
@@ -788,6 +782,12 @@ function Egitmen({ me, refresh }) {
   if (me === undefined) return html`<${Loading} />`;
   if (!me || !me.instructor) return html`<div class="locked"><h1 class="h2">Eğitmen paneli</h1><p class="muted">Bu sayfa eğitmen olarak eklenmiş üyeler içindir. Eğitmen olmak istiyorsan yönetim kuruluna yaz.</p></div>`;
   const ins = me.instructor;
+  const toggleActive = async () => {
+    const { error } = await sb.from('instructors').update({ active: !ins.active }).eq('id', ins.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast(ins.active ? 'Kurslar sayfasından gizlendin.' : 'Artık Kurslar sayfasında görünüyorsun.');
+    refresh();
+  };
   const save = async (e) => {
     e.preventDefault();
     const { error } = await sb.from('instructors').update({ phone: f.phone, email: f.email.trim(), bio: f.bio }).eq('id', ins.id);
@@ -801,7 +801,13 @@ function Egitmen({ me, refresh }) {
         <span class="tag tag-dark self-start">Eğitmen paneli</span>
         <h1 class="h page-h">Takvimim ve taleplerim</h1>
         <span class="muted">${ins.full_name} · ${ins.instrument} · ${ins.kind}</span>
-        ${!ins.active ? html`<span class="form-err">Profilin şu an sitede gizli. Yönetim kurulu aktif edince görünür.</span>` : null}
+      </div>
+      <div class=${'card pad row between ' + (ins.active ? '' : 'card-off')}>
+        <div class="stack-xs">
+          <b>${ins.active ? 'Kurslar sayfasında listeleniyorsun' : 'Şu an listede gizlisin'}</b>
+          <span class="muted small">${ins.active ? 'Öğrenciler seni görüp takviminden talep gönderebilir.' : 'Öğrenciler seni Kurslar sayfasında görmez, yeni talep gelmez. Mevcut derslerin etkilenmez.'}</span>
+        </div>
+        <button type="button" class=${'btn ' + (ins.active ? 'btn-ghost' : 'btn-red')} onClick=${toggleActive}>${ins.active ? 'Listeden gizle' : 'Listede görün'}</button>
       </div>
       <div class="card pad"><${InstructorScheduleEditor} instructor=${ins} /></div>
       ${f ? html`
