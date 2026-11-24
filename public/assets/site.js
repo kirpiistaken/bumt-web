@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS, UserTags
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS, UserTags, HAS_FACULTY, SchoolLine, FacultySelect, INSTRUCTOR_COLS
 } from './lib.js';
 
 const parseRoute = () => {
@@ -388,7 +388,7 @@ function Kurslar({ me }) {
 
   const load = useCallback(async () => {
     const [{ data: ins }, { data: slots }, { data: bookings }] = await Promise.all([
-      sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id,avatar_url').eq('active', true).order('instrument').order('full_name'),
+      sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id,avatar_url' + (HAS_FACULTY ? ',faculty' : '')).eq('active', true).order('instrument').order('full_name'),
       sb.from('instructor_slots').select('instructor_id,weekday,hour'),
       sb.from('lesson_bookings').select('id,instructor_id,weekday,hour,user_id,display_name,status').neq('status', 'reddedildi')
     ]);
@@ -465,7 +465,7 @@ function Kurslar({ me }) {
               <div class=${'card pad stack teacher ' + (t.id === selId ? 'teacher-on' : '')}>
                 <div class="row nowrap">
                   <${Avatar} url=${t.avatar_url} name=${t.full_name} size=${64} />
-                  <div class="stack-xs"><b class="t-name">${t.full_name}</b><span class="muted small">${[t.department, t.class_year].filter(Boolean).join(' · ')}</span></div>
+                  <div class="stack-xs"><b class="t-name">${t.full_name}</b><${SchoolLine} p=${t} cls="muted" /></div>
                 </div>
                 <div class="row-sm"><span class="tag tag-dark">${t.instrument}</span>${t.kind ? html`<span class="tag tag-cream">${t.kind}</span>` : null}${t.profile_id ? html`<${UserTags} uid=${t.profile_id} />` : null}</div>
                 ${t.bio ? html`<p class="muted small">${t.bio}</p>` : null}
@@ -486,7 +486,8 @@ function Kurslar({ me }) {
             <div class="stack-xs">
               <span class="muted small strong">Haftalık takvim</span>
               <h2 class="h2">${sel.full_name} · ${sel.instrument}</h2>
-              <span class="muted small">${[sel.kind, sel.department, sel.class_year].filter(Boolean).join(' · ')}</span>
+              ${sel.kind ? html`<span class="muted small">${sel.kind}</span>` : null}
+              <${SchoolLine} p=${sel} cls="muted" />
               ${sel.profile_id ? html`<${UserTags} uid=${sel.profile_id} />` : null}
             </div>
             </div>
@@ -784,7 +785,7 @@ function Giris({ me }) {
 }
 
 function Kayit({ me }) {
-  const [f, setF] = useState({ full_name: '', student_no: '', phone: '', contact_email: '', department: '', class_year: '1. sınıf', member_type: 'muzisyen', instruments: [], password: '', password2: '', kvkk: false });
+  const [f, setF] = useState({ full_name: '', student_no: '', phone: '', contact_email: '', faculty: '', department: '', class_year: '1. sınıf', member_type: 'muzisyen', instruments: [], password: '', password2: '', kvkk: false });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [done, setDone] = useState(false);
@@ -805,6 +806,7 @@ function Kayit({ me }) {
     setErr('');
     const no = f.student_no.trim().replace(/\s+/g, '');
     if (!/^[0-9]{4,20}$/.test(no)) return setErr('Öğrenci numarası sadece rakamlardan oluşmalı.');
+    if (!f.faculty) return setErr('Fakülteni listeden seç.');
     if (f.password.length < 6) return setErr('Şifre en az 6 karakter olmalı.');
     if (f.password !== f.password2) return setErr('Şifreler aynı değil.');
     if (f.member_type === 'muzisyen' && f.instruments.length === 0) return setErr('Ne çaldığını / söylediğini seç.');
@@ -814,7 +816,7 @@ function Kayit({ me }) {
       email: memberEmail(no), password: f.password,
       options: { data: {
         full_name: f.full_name.trim(), phone: f.phone.trim(), contact_email: f.contact_email.trim(),
-        department: f.department.trim(), class_year: f.class_year, member_type: f.member_type,
+        faculty: f.faculty, department: f.department.trim(), class_year: f.class_year, member_type: f.member_type,
         instruments: f.member_type === 'muzisyen' ? f.instruments : [], kvkk: true
       } }
     });
@@ -838,7 +840,8 @@ function Kayit({ me }) {
           <${Field} label="Öğrenci numarası" hint="Giriş yaparken bunu kullanacaksın"><input class="inp" required inputmode="numeric" value=${f.student_no} onInput=${set('student_no')} /><//>
           <${Field} label="Telefon (WhatsApp)"><input class="inp" type="tel" required autocomplete="tel" value=${f.phone} onInput=${set('phone')} placeholder="05xx xxx xx xx" /><//>
           <${Field} label="E-posta" hint="Şifreni unutursan sıfırlama linki buraya gelir"><input class="inp" type="email" required autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
-          <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
+          <${Field} label="Fakülte"><${FacultySelect} required value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>
+          <${Field} label="Bölüm"><input class="inp" required value=${f.department} onInput=${set('department')} placeholder="ör. Bilgisayar Mühendisliği" /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
         </div>
         <fieldset class="fs"><legend>Toplulukta ne olarak varsın?</legend>
@@ -875,7 +878,7 @@ function Profil({ me, refresh }) {
     if (me === null) go('/giris');
     if (!me || !me.profile) return;
     const p = me.profile;
-    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '' });
+    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, ...(HAS_FACULTY ? { faculty: p.faculty || '' } : {}), department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '' });
     loadMine();
   }, [me && me.user.id]);
 
@@ -951,6 +954,7 @@ function Profil({ me, refresh }) {
         <div class="stack-xs">
           <h1 class="h page-h">Profilim</h1>
           <span class="muted">${p.student_no ? 'Öğrenci no: ' + p.student_no : 'Kullanıcı adı: ' + (p.username || '')}</span>
+          <${SchoolLine} p=${p} />
         </div>
         <div class="row-sm"><${UserTags} uid=${p.id} /><span class=${'tag ' + statusTag[0]}>${statusTag[1]}</span></div>
       </div>
@@ -986,6 +990,7 @@ function Profil({ me, refresh }) {
           <${Field} label="Ad Soyad"><input class="inp" required value=${f.full_name} onInput=${set('full_name')} /><//>
           <${Field} label="Telefon (WhatsApp)"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>
           <${Field} label="E-posta" hint=${f.contact_email ? 'Şifre sıfırlama linki buraya gelir' : 'E-posta eklemezsen şifreni unuttuğunda sıfırlayamazsın'}><input class="inp" type="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
+          ${HAS_FACULTY ? html`<${Field} label="Fakülte"><${FacultySelect} value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>` : null}
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
         </div>
@@ -1319,7 +1324,7 @@ function Uye({ id, me }) {
           <${UserTags} uid=${m.id} />
         </div>
         ${(m.instruments || []).length ? html`<span><b>Çaldıkları:</b> ${m.instruments.join(', ')}</span>` : null}
-        ${[m.department, m.class_year].filter(Boolean).length ? html`<span class="muted">${[m.department, m.class_year].filter(Boolean).join(' · ')}</span>` : null}
+        <${SchoolLine} p=${m} />
         ${m.bio ? html`<p class="post-desc">${m.bio}</p>` : html`<p class="muted small">Henüz bir tanıtım yazmamış.</p>`}
       </div>
     </div>`;

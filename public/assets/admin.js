@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, staffEmail, errMsg, toast, Toaster, adminApi, PERMS,
   todayStr, fmtLong, fmtShort, fmtDateTime, hhmm, addMinutes, nextFridays, DAY_NAMES,
-  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, PROFILE_COLS, INSTRUCTOR_COLS, requestWhatsApp, loadTags, UserTags, TagChip, tagTextColor, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
+  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, PROFILE_COLS, INSTRUCTOR_COLS, HAS_FACULTY, SchoolLine, FacultySelect, requestWhatsApp, loadTags, UserTags, TagChip, tagTextColor, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
 } from './lib.js';
 
 const parseRoute = () => (location.hash.replace(/^#\/?/, '') || '').split('/')[0] || '';
@@ -221,7 +221,7 @@ function Uyeler({ me }) {
   list.forEach((m) => { counts[m.status]++; });
   const term = q.trim().toLocaleLowerCase('tr');
   const shown = list.filter((m) => (filter === 'tumu' || m.status === filter) &&
-    (!term || [m.full_name, m.student_no, m.phone, m.department].join(' ').toLocaleLowerCase('tr').includes(term)));
+    (!term || [m.full_name, m.student_no, m.phone, m.faculty, m.department].join(' ').toLocaleLowerCase('tr').includes(term)));
 
   const setStatus = async (m, status) => {
     const { error } = await sb.from('profiles').update({ status }).eq('id', m.id);
@@ -230,11 +230,11 @@ function Uyeler({ me }) {
     load();
   };
   const exportCSV = () => downloadCSV('bumt-uyeler.csv', me.isSuper ? [
-    ['Ad Soyad', 'Öğrenci no', 'Telefon', 'E-posta', 'Bölüm', 'Sınıf', 'Tür', 'Enstrümanlar', 'Durum', 'Kayıt'],
-    ...shown.map((m) => [m.full_name, m.student_no, m.phone, m.contact_email, m.department, m.class_year, m.member_type, (m.instruments || []).join(', '), m.status, fmtDateTime(m.created_at)])
+    ['Ad Soyad', 'Öğrenci no', 'Telefon', 'E-posta', 'Fakülte', 'Bölüm', 'Sınıf', 'Tür', 'Enstrümanlar', 'Durum', 'Kayıt'],
+    ...shown.map((m) => [m.full_name, m.student_no, m.phone, m.contact_email, m.faculty || '', m.department, m.class_year, m.member_type, (m.instruments || []).join(', '), m.status, fmtDateTime(m.created_at)])
   ] : [
-    ['Ad Soyad', 'Öğrenci no', 'Bölüm', 'Sınıf', 'Tür', 'Enstrümanlar', 'Durum', 'Kayıt'],
-    ...shown.map((m) => [m.full_name, m.student_no, m.department, m.class_year, m.member_type, (m.instruments || []).join(', '), m.status, fmtDateTime(m.created_at)])
+    ['Ad Soyad', 'Öğrenci no', 'Fakülte', 'Bölüm', 'Sınıf', 'Tür', 'Enstrümanlar', 'Durum', 'Kayıt'],
+    ...shown.map((m) => [m.full_name, m.student_no, m.faculty || '', m.department, m.class_year, m.member_type, (m.instruments || []).join(', '), m.status, fmtDateTime(m.created_at)])
   ]);
 
   return html`
@@ -258,7 +258,7 @@ function Uyeler({ me }) {
           <tbody>
             ${shown.map((m) => html`
               <tr>
-                <td><div class="row nowrap-row"><${Avatar} url=${m.avatar_url} name=${m.full_name} size=${36} /><div><b>${m.full_name || '—'}</b> <${UserTags} uid=${m.id} /><div class="sub">${[m.department, m.class_year].filter(Boolean).join(' · ')}</div></div></div></td>
+                <td><div class="row nowrap-row"><${Avatar} url=${m.avatar_url} name=${m.full_name} size=${36} /><div><b>${m.full_name || '—'}</b> <${UserTags} uid=${m.id} /><${SchoolLine} p=${m} cls="sub" /></div></div></td>
                 <td class="mono">${m.student_no}</td>
                 ${me.isSuper ? html`<td>${m.phone}</td>` : null}
                 <td>${m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici'}${(m.instruments || []).length ? html`<div class="sub">${m.instruments.join(', ')}</div>` : null}</td>
@@ -286,6 +286,7 @@ function MemberForm({ f, setF, showPhone }) {
     <div class="fgrid">
       <${Field} label="Ad Soyad"><input class="inp" required value=${f.full_name} onInput=${set('full_name')} /><//>
       ${showPhone ? html`<${Field} label="Telefon"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>` : null}
+      ${HAS_FACULTY ? html`<${Field} label="Fakülte"><${FacultySelect} value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>` : null}
       <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
       <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
       <${Field} label="Tür"><select class="inp" value=${f.member_type} onChange=${set('member_type')}><option value="dinleyici">Dinleyici</option><option value="muzisyen">Müzisyen</option></select><//>
@@ -346,7 +347,7 @@ function TagManager({ onChange }) {
 
 function MemberEdit({ m, me, roles, onClose, onSaved }) {
   const [f, setF] = useState({
-    full_name: m.full_name, phone: m.phone, contact_email: m.contact_email, department: m.department, class_year: m.class_year,
+    full_name: m.full_name, phone: m.phone, contact_email: m.contact_email, faculty: m.faculty || '', department: m.department, class_year: m.class_year,
     member_type: m.member_type, instruments_text: (m.instruments || []).join(', '), status: m.status, role_id: m.role_id || ''
   });
   const [allTags, setAllTags] = useState([]);
@@ -357,7 +358,7 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
-    const patch = { full_name: f.full_name, department: f.department, class_year: f.class_year, member_type: f.member_type, instruments: splitList(f.instruments_text), status: f.status };
+    const patch = { full_name: f.full_name, ...(HAS_FACULTY ? { faculty: f.faculty } : {}), department: f.department, class_year: f.class_year, member_type: f.member_type, instruments: splitList(f.instruments_text), status: f.status };
     if (me.isSuper) { patch.phone = f.phone; patch.contact_email = f.contact_email; }
     if (me.can('roller')) patch.role_id = f.role_id || null;
     const { error } = await sb.from('profiles').update(patch).eq('id', m.id);
@@ -415,7 +416,7 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
 }
 
 function MemberAdd({ onClose, onSaved }) {
-  const [f, setF] = useState({ student_no: '', full_name: '', phone: '', department: '', class_year: '', member_type: 'muzisyen', instruments_text: '', password: randomPw(), approved: true });
+  const [f, setF] = useState({ student_no: '', full_name: '', phone: '', faculty: '', department: '', class_year: '', member_type: 'muzisyen', instruments_text: '', password: randomPw(), approved: true });
   const [busy, setBusy] = useState(false);
   const save = async (e) => {
     e.preventDefault();
@@ -966,7 +967,7 @@ function KurslarAdmin({ me }) {
             const s = stats[t.id] || { slots: 0, booked: 0, waiting: 0 };
             return html`
               <tr>
-                <td><div class="row nowrap-row"><${Avatar} url=${t.avatar_url} name=${t.full_name} size=${36} /><div><b>${t.full_name}</b><div class="sub">${[t.department, t.class_year].filter(Boolean).join(' · ')}</div></div></div></td>
+                <td><div class="row nowrap-row"><${Avatar} url=${t.avatar_url} name=${t.full_name} size=${36} /><div><b>${t.full_name}</b><${SchoolLine} p=${t} cls="sub" /></div></div></td>
                 <td>${t.instrument}</td><td>${t.kind}</td>
                 <td class="mono">${t.profiles ? t.profiles.student_no : html`<span class="muted">—</span>`}</td>
                 <td>${s.slots} müsait · ${s.booked} dolu${s.waiting ? html` · <span class="badge badge-wait">${s.waiting} talep</span>` : null}${me.isSuper && !t.email && !t.profile_id ? html`<div class="sub red">E-posta yok, bildirim gitmez</div>` : null}</td>
@@ -986,7 +987,7 @@ function KurslarAdmin({ me }) {
 
 function InstructorEdit({ me, t, onClose, onSaved }) {
   const [f, setF] = useState({
-    full_name: t.full_name || '', instrument: t.instrument || 'Gitar', kind: t.kind || KINDS[1], department: t.department || '',
+    full_name: t.full_name || '', instrument: t.instrument || 'Gitar', kind: t.kind || KINDS[1], faculty: t.faculty || '', department: t.department || '',
     class_year: t.class_year || '', phone: t.phone || '', email: t.email || '', bio: t.bio || '', active: t.id ? t.active : true, avatar_url: t.avatar_url || '',
     student_no: t.profiles ? t.profiles.student_no : '', profile_id: t.profile_id || null
   });
@@ -996,16 +997,16 @@ function InstructorEdit({ me, t, onClose, onSaved }) {
   const lookup = async () => {
     const no = f.student_no.trim();
     if (!no) return setF({ ...f, profile_id: null });
-    const { data } = await sb.from('profiles').select('id,full_name,department,class_year,status').eq('student_no', no).maybeSingle();
+    const { data } = await sb.from('profiles').select('id,full_name,department,class_year,status' + (HAS_FACULTY ? ',faculty' : '')).eq('student_no', no).maybeSingle();
     if (!data) return toast('Bu öğrenci numarasıyla üye bulunamadı.', 'err');
-    setF({ ...f, profile_id: data.id, full_name: f.full_name || data.full_name, department: f.department || data.department, class_year: f.class_year || data.class_year });
+    setF({ ...f, profile_id: data.id, full_name: f.full_name || data.full_name, faculty: f.faculty || data.faculty || '', department: f.department || data.department, class_year: f.class_year || data.class_year });
     toast(data.full_name + ' hesabı bağlandı' + (data.status !== 'onaylandi' ? ' (üyeliği henüz onaylı değil)' : '') + '.');
   };
   const save = async (e) => {
     e.preventDefault();
     if (f.student_no.trim() && !f.profile_id) return toast('Önce "Bul ve bağla" ile hesabı bağla ya da numarayı sil.', 'err');
     setBusy(true);
-    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, department: f.department, class_year: f.class_year, bio: f.bio, avatar_url: f.avatar_url, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
+    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, ...(HAS_FACULTY ? { faculty: f.faculty } : {}), department: f.department, class_year: f.class_year, bio: f.bio, avatar_url: f.avatar_url, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
     if (me.isSuper || !t.id) { row.phone = f.phone; row.email = f.email.trim(); }
     const { error } = t.id ? await sb.from('instructors').update(row).eq('id', t.id) : await sb.from('instructors').insert(row);
     setBusy(false);
@@ -1048,6 +1049,7 @@ function InstructorEdit({ me, t, onClose, onSaved }) {
           <${Field} label="Ad Soyad"><input class="inp" required value=${f.full_name} onInput=${set('full_name')} /><//>
           <${Field} label="Enstrüman"><input class="inp" required list="ins-list" value=${f.instrument} onInput=${set('instrument')} /><datalist id="ins-list">${INSTRUMENTS.map((i) => html`<option value=${i}></option>`)}</datalist><//>
           <${Field} label="Tür"><select class="inp" value=${f.kind} onChange=${set('kind')}>${KINDS.map((k) => html`<option>${k}</option>`)}</select><//>
+          ${HAS_FACULTY ? html`<${Field} label="Fakülte"><${FacultySelect} value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>` : null}
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
           ${me.isSuper || !t.id ? html`

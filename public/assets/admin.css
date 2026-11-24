@@ -222,3 +222,6 @@ textarea.inp { resize: vertical; }
 .tag-pick { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 2px solid transparent; font-weight: 600; font-size: 13px; cursor: pointer; opacity: .45; }
 .tag-pick.on { opacity: 1; border-color: var(--ink); }
 .color-in { width: 44px; height: 34px; padding: 2px; border: 1px solid var(--line2); border-radius: 8px; background: #fff; }
+.school { display: flex; flex-direction: column; gap: 1px; line-height: 1.3; }
+.school-fac { font-weight: 600; font-size: 13px; }
+.school-sub { font-size: 12.5px; opacity: .7; }

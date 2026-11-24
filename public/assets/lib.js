@@ -5,12 +5,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 export { html, render, useState, useEffect, useMemo, useRef, useCallback };
 
 export let sb = null;
+export let HAS_FACULTY = false;
 
 export async function initSupabase() {
   const r = await fetch('/api/config');
   const c = await r.json();
   if (!r.ok) throw new Error(c.error || 'Ayarlar okunamadı');
   sb = createClient(c.url, c.key, { auth: { persistSession: true, autoRefreshToken: true } });
+  // 015_fakulte.sql çalıştırıldı mı? (çalıştırılmadıysa site fakülte olmadan çalışmaya devam eder)
+  try { const t = await sb.from('instructors').select('faculty').limit(1); HAS_FACULTY = !t.error; } catch (e) { HAS_FACULTY = false; }
+  if (HAS_FACULTY) { PROFILE_COLS += ',faculty'; INSTRUCTOR_COLS += ',faculty'; }
   return sb;
 }
 
@@ -35,10 +39,48 @@ export const PERMS = [
 
 export const INSTRUMENTS = ['Gitar', 'Elektro Gitar', 'Bas Gitar', 'Davul', 'Piyano / Klavye', 'Keman', 'Viyola', 'Çello', 'Vokal', 'Yan Flüt', 'Saksafon', 'Bağlama', 'Ukulele', 'Diğer'];
 export const KINDS = ['Hoca', 'Ders veren öğrenci', 'Gönüllü öğrenci'];
+export const FACULTIES = [
+  'Diş Hekimliği Fakültesi',
+  'Eczacılık Fakültesi',
+  'Eğitim Fakültesi',
+  'Fen-Edebiyat Fakültesi',
+  'Güzel Sanatlar, Tasarım ve Mimarlık Fakültesi',
+  'Hukuk Fakültesi',
+  'İktisadi ve İdari Bilimler Fakültesi',
+  'İletişim Fakültesi',
+  'Mühendislik Fakültesi',
+  'Sağlık Bilimleri Fakültesi',
+  'Ticari Bilimler Fakültesi',
+  'Tıp Fakültesi',
+  'Devlet Konservatuvarı',
+  'Yabancı Diller Yüksekokulu (Hazırlık)',
+  'Sağlık Hizmetleri Meslek Yüksekokulu',
+  'Sosyal Bilimler Meslek Yüksekokulu',
+  'Teknik Bilimler Meslek Yüksekokulu',
+  'Kahramankazan Meslek Yüksekokulu',
+  'Anadolu OSB Meslek Yüksekokulu',
+  'Adana Sağlık Hizmetleri Meslek Yüksekokulu',
+  'Konya Sağlık Hizmetleri Meslek Yüksekokulu',
+  'Enstitü (Yüksek lisans / Doktora)',
+  'Başkent Üniversitesi dışından'
+];
+// Fakülte kalın, altında bölüm · sınıf
+export function SchoolLine({ p, cls }) {
+  const sub = [p.department, p.class_year].filter(Boolean).join(' · ');
+  if (!p.faculty && !sub) return null;
+  return html`<span class=${'school ' + (cls || '')}>${p.faculty ? html`<span class="school-fac">${p.faculty}</span>` : null}${sub ? html`<span class="school-sub">${sub}</span>` : null}</span>`;
+}
+export function FacultySelect({ value, onChange, required }) {
+  const opts = value && !FACULTIES.includes(value) ? [value, ...FACULTIES] : FACULTIES;
+  return html`<select class="inp" required=${!!required} value=${value || ''} onChange=${(e) => onChange(e.target.value)}>
+    <option value="" disabled=${!!required}>Fakülte seç…</option>
+    ${opts.map((x) => html`<option value=${x}>${x}</option>`)}
+  </select>`;
+}
 export const CLASS_YEARS = ['Hazırlık', '1. sınıf', '2. sınıf', '3. sınıf', '4. sınıf', '5. sınıf', '6. sınıf', 'Yüksek lisans', 'Doktora', 'Mezun', 'Akademisyen / Personel'];
 
-export const PROFILE_COLS = 'id,student_no,username,full_name,department,class_year,member_type,instruments,status,is_staff,is_super,role_id,kvkk_at,created_at,notify_mail,avatar_url,bio';
-export const INSTRUCTOR_COLS = 'id,profile_id,full_name,instrument,kind,department,class_year,bio,active,created_at,avatar_url';
+export let PROFILE_COLS = 'id,student_no,username,full_name,department,class_year,member_type,instruments,status,is_staff,is_super,role_id,kvkk_at,created_at,notify_mail,avatar_url,bio';
+export let INSTRUCTOR_COLS = 'id,profile_id,full_name,instrument,kind,department,class_year,bio,active,created_at,avatar_url';
 
 // Giriş yapan kişinin profili, yetkileri ve (varsa) eğitmen kaydı
 export async function loadMe() {

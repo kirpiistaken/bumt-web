@@ -60,7 +60,7 @@ module.exports = async (req, res) => {
         password: String(body.password),
         email_confirm: true,
         user_metadata: {
-          full_name: body.full_name || '', phone: body.phone || '', department: body.department || '',
+          full_name: body.full_name || '', phone: body.phone || '', faculty: String(body.faculty || '').slice(0, 120), department: body.department || '',
           class_year: body.class_year || '', member_type: body.member_type === 'muzisyen' ? 'muzisyen' : 'dinleyici',
           instruments: Array.isArray(body.instruments) ? body.instruments : [], kvkk: true
         },
