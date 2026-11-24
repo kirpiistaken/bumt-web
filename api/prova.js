@@ -31,8 +31,6 @@ function requestMail(b, base, name) {
       ${row('Tarih ve saat', esc(when(b)))}
       ${row('Üye', esc(p.full_name))}
       ${row('Öğrenci no', esc(p.student_no))}
-      ${row('Telefon', esc(p.phone))}
-      ${row('E-posta', esc(p.contact_email))}
       ${row('Bölüm', esc([p.department, p.class_year].filter(Boolean).join(' · ')))}
       ${row('Profil', esc(music))}
       ${row('Not', esc(b.note))}

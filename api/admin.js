@@ -97,16 +97,19 @@ module.exports = async (req, res) => {
     if (target.is_super && !caller.isSuper) return send(res, 403, { error: 'Süper yönetici hesabına dokunulamaz.' });
 
     if (action === 'set_password') {
+      if (!caller.isSuper) return send(res, 403, { error: 'Elle şifre belirlemeyi sadece süper yönetici yapabilir. Üyeye "Sıfırlama linki gönder" kullan.' });
       if (!body.password || String(body.password).length < 6) return send(res, 400, { error: 'Şifre en az 6 karakter olmalı.' });
       const r = await admin('/auth/v1/admin/users/' + encodeURIComponent(target.id), {
         method: 'PUT', body: JSON.stringify({ password: String(body.password) })
       });
+      if (r.ok) await admin('/rest/v1/audit_log', { method: 'POST', body: JSON.stringify({ actor: caller.id, action: 'sifre_elle_belirlendi', target_id: target.id }) });
       return r.ok ? send(res, 200, { ok: true }) : send(res, 400, { error: errText(r) });
     }
 
     if (target.id === caller.id) return send(res, 400, { error: 'Kendi hesabını silemezsin.' });
     if (target.is_super) return send(res, 400, { error: 'Süper yönetici hesabı silinemez.' });
     const r = await admin('/auth/v1/admin/users/' + encodeURIComponent(target.id), { method: 'DELETE' });
+    if (r.ok) await admin('/rest/v1/audit_log', { method: 'POST', body: JSON.stringify({ actor: caller.id, action: 'hesap_silindi', target_id: target.id, detail: 'panelden' }) });
     return r.ok ? send(res, 200, { ok: true }) : send(res, 400, { error: errText(r) });
   }
 

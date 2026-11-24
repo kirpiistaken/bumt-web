@@ -32,15 +32,14 @@ async function getCaller(req) {
   const sub = jwtSub(token);
   if (!sub || !/^[0-9a-f-]{36}$/i.test(sub)) return { error: 'Oturum geçersiz.' };
   const key = PUBLIC_KEY || SECRET;
-  const r = await fetch(SB_URL + '/rest/v1/profiles?select=id,is_super,role_id,roles(permissions)&id=eq.' + sub, {
-    headers: { apikey: key, Authorization: 'Bearer ' + token }
+  // Kullanıcının kendi oturumuyla etkin yetkilerini sorar (iki adımlı doğrulama dahil). Sahte oturumu Supabase reddeder.
+  const r = await fetch(SB_URL + '/rest/v1/rpc/my_access', {
+    method: 'POST', headers: { apikey: key, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: '{}'
   });
   const data = await parse(r);
-  if (!r.ok) return { error: 'Oturum doğrulanamadı (' + r.status + '). Çıkış yapıp tekrar gir.' };
-  const prof = Array.isArray(data) ? data[0] : null;
-  if (!prof || prof.id !== sub) return { error: 'Profil bulunamadı.' };
-  const perms = (prof.roles && prof.roles.permissions) || [];
-  return { id: sub, isSuper: !!prof.is_super, can: (k) => !!prof.is_super || perms.includes(k) };
+  if (!r.ok || !data || typeof data !== 'object') return { error: 'Oturum doğrulanamadı (' + r.status + '). Çıkış yapıp tekrar gir.' };
+  const perms = Array.isArray(data.perms) ? data.perms : [];
+  return { id: sub, isSuper: !!data.is_super, mfaOk: !!data.mfa_ok, can: (k) => !!data.is_super || perms.includes(k) };
 }
 
 module.exports = { SB_URL, SECRET, sb, getCaller };

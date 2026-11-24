@@ -19,8 +19,8 @@ module.exports = async (req, res) => {
     resend_key: process.env.RESEND_API_KEY ? 'var' : 'yok'
   };
   if (SB_URL && SECRET) {
-    const p = await sb('/rest/v1/profiles?select=id&limit=1000');
-    out.profiles_okuma = p.ok ? ('ok, ' + (Array.isArray(p.data) ? p.data.length : '?') + ' profil') : ('hata ' + p.status + ': ' + JSON.stringify(p.data).slice(0, 160));
+    const p = await sb('/rest/v1/profiles?select=id&limit=1');
+    out.profiles_okuma = p.ok ? 'ok' : ('hata ' + p.status + ': ' + JSON.stringify(p.data).slice(0, 160));
     const chk = async (path) => { const r = await sb(path); return r.ok ? 'kurulu' : 'EKSİK'; };
     out.sql_002_ders_talepleri = await chk('/rest/v1/lesson_bookings?select=status&limit=1');
     out.sql_004_prova_talepleri = await chk('/rest/v1/prova_bookings?select=status&limit=1');
@@ -28,6 +28,7 @@ module.exports = async (req, res) => {
     out.sql_006_dinleti_basvurulari = await chk('/rest/v1/dinleti_bookings?select=status&limit=1');
     out.sql_009_profil_fotografi = await chk('/rest/v1/profiles?select=avatar_url&limit=1');
     out.sql_010_sifre_sifirlama = await chk('/rest/v1/password_resets?select=id&limit=1');
+    out.sql_011_guvenlik = await chk('/rest/v1/audit_log?select=id&limit=1');
     const a = await sb('/auth/v1/admin/users?per_page=1');
     out.auth_admin = a.ok ? 'ok' : ('hata ' + a.status + ': ' + JSON.stringify(a.data).slice(0, 160));
   }

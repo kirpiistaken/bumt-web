@@ -37,20 +37,47 @@ export const INSTRUMENTS = ['Gitar', 'Elektro Gitar', 'Bas Gitar', 'Davul', 'Piy
 export const KINDS = ['Hoca', 'Ders veren öğrenci', 'Gönüllü öğrenci'];
 export const CLASS_YEARS = ['Hazırlık', '1. sınıf', '2. sınıf', '3. sınıf', '4. sınıf', '5. sınıf', '6. sınıf', 'Yüksek lisans', 'Doktora', 'Mezun', 'Akademisyen / Personel'];
 
+export const PROFILE_COLS = 'id,student_no,username,full_name,department,class_year,member_type,instruments,status,is_staff,is_super,role_id,kvkk_at,created_at,notify_mail,avatar_url,bio';
+export const INSTRUCTOR_COLS = 'id,profile_id,full_name,instrument,kind,department,class_year,bio,active,created_at,avatar_url';
+
 // Giriş yapan kişinin profili, yetkileri ve (varsa) eğitmen kaydı
 export async function loadMe() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return null;
   const uid = session.user.id;
-  const { data: profile } = await sb.from('profiles').select('*, roles(name, permissions)').eq('id', uid).maybeSingle();
+  const [{ data: profile }, { data: priv }, { data: access }, { data: instructor }] = await Promise.all([
+    sb.from('profiles').select(PROFILE_COLS + ', roles(name, permissions)').eq('id', uid).maybeSingle(),
+    sb.rpc('my_private'),
+    sb.rpc('my_access'),
+    sb.from('instructors').select(INSTRUCTOR_COLS).eq('profile_id', uid).maybeSingle()
+  ]);
   if (!profile) return { session, user: session.user, profile: null, perms: [], can: () => false, instructor: null };
-  const perms = (profile.roles && profile.roles.permissions) || [];
-  const { data: instructor } = await sb.from('instructors').select('*').eq('profile_id', uid).maybeSingle();
+  const pv = priv || {};
+  profile.phone = pv.phone || '';
+  profile.contact_email = pv.contact_email || '';
+  if (instructor) { instructor.phone = pv.instructor_phone || ''; instructor.email = pv.instructor_email || ''; }
+  // 011_guvenlik.sql henüz çalıştırılmadıysa eski davranış
+  const acc = access || { is_super: !!profile.is_super, perms: (profile.roles && profile.roles.permissions) || [], mfa_ok: true };
+  const perms = acc.perms || [];
+  const isSuper = !!acc.is_super;
+  // Yetkisi olan ama iki adımlı doğrulama kodunu girmemiş hesap
+  const needsMfa = acc.mfa_ok === false && (profile.is_super || !!profile.role_id);
   return {
     session, user: session.user, profile, perms, instructor: instructor || null,
-    isAdmin: profile.is_super || !!profile.role_id,
-    can: (k) => profile.is_super || perms.includes(k)
+    isSuper, needsMfa,
+    isAdmin: isSuper || perms.length > 0 || needsMfa,
+    can: (k) => isSuper || perms.includes(k)
   };
+}
+
+// Yetkilinin bir talep sahibine numarayı görmeden WhatsApp'tan yazması (erişim kayda geçer)
+export async function requestWhatsApp(kind, id, text) {
+  let w = null;
+  try { w = window.open('', '_blank'); } catch (e) { w = null; }
+  const { data: ph, error } = await sb.rpc('request_contact', { p_kind: kind, p_id: id });
+  if (error || !ph) { if (w) w.close(); return toast(error ? errMsg(error) : 'Bu kişi telefon numarası eklememiş.', 'err'); }
+  const url = waLink(ph, text);
+  if (w) w.location.href = url; else location.href = url;
 }
 
 export async function adminApi(action, body) {
@@ -247,7 +274,8 @@ export function InstructorScheduleEditor({ instructor }) {
   const contact = (r) => html`
     <span class="req-contact">
       <span class="mono">${r.student_no}</span>
-      ${r.phone ? html` · <a href=${'tel:' + r.phone}>${r.phone}</a> · <a href=${waLink(r.phone, 'Merhaba ' + r.full_name + ', BÜMT ders talebin hakkında yazıyorum.')} target="_blank" rel="noopener">WhatsApp</a>` : null}
+      ${r.phone ? html` · <a href=${'tel:' + r.phone}>${r.phone}</a>` : null}
+      · <button type="button" class="link-btn" onClick=${() => requestWhatsApp('ders', r.id, 'Merhaba ' + r.full_name + ', BÜMT ders talebin hakkında yazıyorum.')}>WhatsApp'tan yaz</button>
       ${r.contact_email ? html` · <a href=${'mailto:' + r.contact_email}>${r.contact_email}</a>` : null}
     </span>`;
 

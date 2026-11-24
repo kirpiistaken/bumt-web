@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, staffEmail, errMsg, toast, Toaster, adminApi, PERMS,
   todayStr, fmtLong, fmtShort, fmtDateTime, hhmm, addMinutes, nextFridays, DAY_NAMES,
-  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
+  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, PROFILE_COLS, INSTRUCTOR_COLS, requestWhatsApp, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
 } from './lib.js';
 
 const parseRoute = () => (location.hash.replace(/^#\/?/, '') || '').split('/')[0] || '';
@@ -97,13 +97,14 @@ const SECTIONS = [
   ['dinletiler', 'Dinletiler', 'mic', 'dinletiler'],
   ['etkinlikler', 'Etkinlikler', 'star', 'etkinlikler'],
   ['formlar', 'Formlar ve başvurular', 'form', 'formlar'],
+  ['guvenlik', 'Güvenlik kayıtları', 'shield', '__super'],
   ['hesap', 'Hesabım', 'key', null]
 ];
 
 function Shell({ me, route, refresh }) {
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => setNavOpen(false), [route]);
-  const allowed = SECTIONS.filter((s) => !s[3] || me.can(s[3]));
+  const allowed = SECTIONS.filter((s) => !s[3] || (s[3] === '__super' ? me.isSuper : me.can(s[3])));
   const cur = allowed.find((s) => s[0] === route) || allowed[0];
   const p = me.profile;
   const roleName = p.is_super ? 'Süper yönetici' : (p.roles && p.roles.name) || '';
@@ -114,11 +115,12 @@ function Shell({ me, route, refresh }) {
     case 'uyeler': body = html`<${Uyeler} me=${me} />`; break;
     case 'roller': body = html`<${Roller} me=${me} />`; break;
     case 'prova': body = html`<${ProvaAdmin} />`; break;
-    case 'kurslar': body = html`<${KurslarAdmin} />`; break;
+    case 'kurslar': body = html`<${KurslarAdmin} me=${me} />`; break;
     case 'dinletiler': body = html`<${DinletiAdmin} />`; break;
     case 'etkinlikler': body = html`<${EtkinlikAdmin} />`; break;
     case 'formlar': body = html`<${FormlarAdmin} />`; break;
-    case 'hesap': body = html`<${Hesap} me=${me} />`; break;
+    case 'hesap': body = html`<${Hesap} me=${me} refresh=${refresh} />`; break;
+    case 'guvenlik': body = html`<${AuditLog} />`; break;
     default: body = html`<${Dashboard} me=${me} />`;
   }
 
@@ -200,9 +202,15 @@ function Uyeler({ me }) {
   const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
-    const { data, error } = await sb.from('profiles').select('*, roles(name)').eq('is_staff', false).order('created_at', { ascending: false });
+    const { data, error } = await sb.from('profiles').select(PROFILE_COLS + ', roles(name)').eq('is_staff', false).order('created_at', { ascending: false });
     if (error) toast(errMsg(error), 'err');
-    setList(data || []);
+    let rows = data || [];
+    if (me.isSuper) {
+      const { data: c } = await sb.rpc('admin_contacts');
+      const map = {}; (c || []).forEach((x) => { map[x.id] = x; });
+      rows = rows.map((m) => ({ ...m, phone: (map[m.id] || {}).phone || '', contact_email: (map[m.id] || {}).contact_email || '' }));
+    }
+    setList(rows);
     const { data: r } = await sb.from('roles').select('id,name').order('name');
     setRoles(r || []);
   }, []);
@@ -221,9 +229,12 @@ function Uyeler({ me }) {
     toast(status === 'onaylandi' ? m.full_name + ' onaylandı.' : m.full_name + ' reddedildi.');
     load();
   };
-  const exportCSV = () => downloadCSV('bumt-uyeler.csv', [
+  const exportCSV = () => downloadCSV('bumt-uyeler.csv', me.isSuper ? [
     ['Ad Soyad', 'Öğrenci no', 'Telefon', 'E-posta', 'Bölüm', 'Sınıf', 'Tür', 'Enstrümanlar', 'Durum', 'Kayıt'],
     ...shown.map((m) => [m.full_name, m.student_no, m.phone, m.contact_email, m.department, m.class_year, m.member_type, (m.instruments || []).join(', '), m.status, fmtDateTime(m.created_at)])
+  ] : [
+    ['Ad Soyad', 'Öğrenci no', 'Bölüm', 'Sınıf', 'Tür', 'Enstrümanlar', 'Durum', 'Kayıt'],
+    ...shown.map((m) => [m.full_name, m.student_no, m.department, m.class_year, m.member_type, (m.instruments || []).join(', '), m.status, fmtDateTime(m.created_at)])
   ]);
 
   return html`
@@ -242,13 +253,13 @@ function Uyeler({ me }) {
       <div class="panel table-wrap">
         ${shown.length === 0 ? html`<${Empty}>Bu listede kimse yok.<//>` : html`
         <table class="tbl">
-          <thead><tr><th>Ad Soyad</th><th>Öğrenci no</th><th>Telefon</th><th>Profil</th><th>Rol</th><th>Durum</th><th>Kayıt</th><th></th></tr></thead>
+          <thead><tr><th>Ad Soyad</th><th>Öğrenci no</th>${me.isSuper ? html`<th>Telefon</th>` : null}<th>Profil</th><th>Rol</th><th>Durum</th><th>Kayıt</th><th></th></tr></thead>
           <tbody>
             ${shown.map((m) => html`
               <tr>
                 <td><div class="row nowrap-row"><${Avatar} url=${m.avatar_url} name=${m.full_name} size=${36} /><div><b>${m.full_name || '—'}</b><div class="sub">${[m.department, m.class_year].filter(Boolean).join(' · ')}</div></div></div></td>
                 <td class="mono">${m.student_no}</td>
-                <td>${m.phone}</td>
+                ${me.isSuper ? html`<td>${m.phone}</td>` : null}
                 <td>${m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici'}${(m.instruments || []).length ? html`<div class="sub">${m.instruments.join(', ')}</div>` : null}</td>
                 <td>${m.roles ? m.roles.name : html`<span class="muted">—</span>`}</td>
                 <td><span class=${'badge ' + STATUS[m.status][0]}>${STATUS[m.status][1]}</span></td>
@@ -268,12 +279,12 @@ function Uyeler({ me }) {
     </div>`;
 }
 
-function MemberForm({ f, setF }) {
+function MemberForm({ f, setF, showPhone }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   return html`
     <div class="fgrid">
       <${Field} label="Ad Soyad"><input class="inp" required value=${f.full_name} onInput=${set('full_name')} /><//>
-      <${Field} label="Telefon"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>
+      ${showPhone ? html`<${Field} label="Telefon"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>` : null}
       <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
       <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
       <${Field} label="Tür"><select class="inp" value=${f.member_type} onChange=${set('member_type')}><option value="dinleyici">Dinleyici</option><option value="muzisyen">Müzisyen</option></select><//>
@@ -291,7 +302,8 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
-    const patch = { full_name: f.full_name, phone: f.phone, contact_email: f.contact_email, department: f.department, class_year: f.class_year, member_type: f.member_type, instruments: splitList(f.instruments_text), status: f.status };
+    const patch = { full_name: f.full_name, department: f.department, class_year: f.class_year, member_type: f.member_type, instruments: splitList(f.instruments_text), status: f.status };
+    if (me.isSuper) { patch.phone = f.phone; patch.contact_email = f.contact_email; }
     if (me.can('roller')) patch.role_id = f.role_id || null;
     const { error } = await sb.from('profiles').update(patch).eq('id', m.id);
     setBusy(false);
@@ -300,11 +312,11 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
     onSaved();
   };
   const sendLink = async () => {
-    if (!m.contact_email) return toast('Bu üyenin e-postası yok. Önce e-posta ekle ya da elle şifre belirle.', 'err');
+    if (me.isSuper && !m.contact_email) return toast('Bu üyenin e-postası yok. Önce e-posta ekle ya da elle şifre belirle.', 'err');
     try {
       const r = await fetch('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ident: m.student_no }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Gönderilemedi');
-      toast('Sıfırlama linki ' + m.contact_email + ' adresine gönderildi (son 2 dakikada gönderildiyse tekrar gitmez).');
+      toast(me.isSuper ? 'Sıfırlama linki ' + m.contact_email + ' adresine gönderildi (son 2 dakikada gönderildiyse tekrar gitmez).' : 'Üyenin kayıtlı e-postası varsa sıfırlama linki gönderildi.');
     } catch (err) { toast(err.message, 'err'); }
   };
   const resetPw = async () => {
@@ -321,9 +333,9 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
     <${Modal} title=${'Üye: ' + (m.full_name || m.student_no)} onClose=${onClose}>
       <form class="stack" onSubmit=${save}>
         <p class="muted small">Öğrenci no: <b class="mono">${m.student_no}</b> · Kayıt: ${fmtDateTime(m.created_at)}${m.kvkk_at ? ' · KVKK onaylı' : ''}</p>
-        <${MemberForm} f=${f} setF=${setF} />
+        <${MemberForm} f=${f} setF=${setF} showPhone=${me.isSuper} />
         <div class="fgrid">
-          <${Field} label="E-posta"><input class="inp" type="email" value=${f.contact_email} onInput=${(e) => setF({ ...f, contact_email: e.target.value })} /><//>
+          ${me.isSuper ? html`<${Field} label="E-posta"><input class="inp" type="email" value=${f.contact_email} onInput=${(e) => setF({ ...f, contact_email: e.target.value })} /><//>` : null}
           <${Field} label="Üyelik durumu"><select class="inp" value=${f.status} onChange=${(e) => setF({ ...f, status: e.target.value })}>
             <option value="bekliyor">Onay bekliyor</option><option value="onaylandi">Onaylı</option><option value="reddedildi">Reddedildi</option></select><//>
           ${me.can('roller') ? html`
@@ -332,7 +344,7 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
         </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" onClick=${sendLink}>Sıfırlama linki gönder</button>
-          <button type="button" class="btn btn-ghost" onClick=${resetPw}>Elle şifre belirle</button>
+          ${me.isSuper ? html`<button type="button" class="btn btn-ghost" onClick=${resetPw}>Elle şifre belirle</button>` : null}
           <button type="button" class="btn btn-danger" onClick=${remove}>Hesabı sil</button>
           <span class="grow"></span>
           <button type="submit" class="btn btn-red" disabled=${busy}>Kaydet</button>
@@ -361,7 +373,7 @@ function MemberAdd({ onClose, onSaved }) {
           <${Field} label="Öğrenci numarası"><input class="inp" required inputmode="numeric" value=${f.student_no} onInput=${(e) => setF({ ...f, student_no: e.target.value })} /><//>
           <${Field} label="Geçici şifre" hint="Üyeye ilet; profilinden değiştirebilir"><input class="inp mono" required minlength="6" value=${f.password} onInput=${(e) => setF({ ...f, password: e.target.value })} /><//>
         </div>
-        <${MemberForm} f=${f} setF=${setF} />
+        <${MemberForm} f=${f} setF=${setF} showPhone=${true} />
         <label class="check"><input type="checkbox" checked=${f.approved} onChange=${(e) => setF({ ...f, approved: e.target.checked })} />Hesap onaylı olarak açılsın</label>
         <div class="modal-actions"><span class="grow"></span><button type="submit" class="btn btn-red" disabled=${busy}>Üyeyi ekle</button></div>
       </form>
@@ -380,10 +392,18 @@ function Roller({ me }) {
   const load = useCallback(async () => {
     const [{ data: r }, { data: s }] = await Promise.all([
       sb.from('roles').select('*').order('name'),
-      sb.from('profiles').select('id,full_name,username,student_no,is_super,is_staff,role_id,contact_email,notify_mail').or('is_super.eq.true,is_staff.eq.true,role_id.not.is.null').order('full_name')
+      sb.from('profiles').select('id,full_name,username,student_no,is_super,is_staff,role_id,notify_mail').or('is_super.eq.true,is_staff.eq.true,role_id.not.is.null').order('full_name')
     ]);
+    let st = s || [];
+    if (me.isSuper) {
+      const { data: c } = await sb.rpc('admin_contacts');
+      const map = {}; (c || []).forEach((x) => { map[x.id] = x.contact_email; });
+      st = st.map((p) => ({ ...p, contact_email: map[p.id] || '' }));
+    } else {
+      st = st.map((p) => (p.id === me.user.id ? { ...p, contact_email: me.profile.contact_email } : p));
+    }
     setRoles(r || []);
-    setStaff(s || []);
+    setStaff(st);
   }, []);
   useEffect(() => { load(); }, [load]);
   if (!roles) return html`<${Loading} />`;
@@ -450,10 +470,10 @@ function Roller({ me }) {
                     <select class="inp inp-sm" aria-label="Rol" value=${p.role_id || ''} onChange=${(e) => setRole(p, e.target.value)}>
                       <option value="">Rol yok</option>${roles.map((r) => html`<option value=${r.id}>${r.name}</option>`)}
                     </select>`}</td>
-                  <td><input class="inp inp-sm" type="email" aria-label="Bildirim e-postası" placeholder="ornek@gmail.com" value=${p.contact_email || ''} onChange=${(e) => setField(p, 'contact_email', e.target.value.trim())} /></td>
+                  <td>${me.isSuper || p.id === me.user.id ? html`<input class="inp inp-sm" type="email" aria-label="Bildirim e-postası" placeholder="ornek@gmail.com" value=${p.contact_email || ''} onChange=${(e) => setField(p, 'contact_email', e.target.value.trim())} />` : html`<span class="sub">Gizli</span>`}</td>
                   <td class="c"><input type="checkbox" class="cb" aria-label="E-posta bildirimi alsın" checked=${p.notify_mail !== false} onChange=${(e) => setField(p, 'notify_mail', e.target.checked)} /></td>
                   <td class="actions">
-                    ${!p.is_super || me.profile.is_super ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => resetPw(p)}>Şifre sıfırla</button>` : null}
+                    ${me.isSuper ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => resetPw(p)}>Şifre sıfırla</button>` : null}
                     ${p.is_staff && !p.is_super && p.id !== me.user.id ? html`<button type="button" class="btn btn-sm btn-danger" onClick=${() => remove(p)}>Sil</button>` : null}
                   </td>
                 </tr>`)}
@@ -577,8 +597,8 @@ function ProvaAdmin() {
   const music = (r) => r.member_type === 'muzisyen' ? 'Müzisyen' + ((r.instruments || []).length ? ' · ' + r.instruments.join(', ') : '') : 'Dinleyici';
   const contact = (r) => html`
     <div class="row">
-      ${r.phone ? html`<a class="btn btn-sm btn-wa" href=${waLink(r.phone, 'Merhaba ' + r.full_name + ', BÜMT prova odası talebin hakkında yazıyorum.')} target="_blank" rel="noopener">WhatsApp</a>
-        <a class="btn btn-sm btn-ghost" href=${'tel:' + r.phone}>${r.phone}</a>` : null}
+      <button type="button" class="btn btn-sm btn-wa" onClick=${() => requestWhatsApp('prova', r.id, 'Merhaba ' + r.full_name + ', BÜMT prova odası talebin hakkında yazıyorum.')}>WhatsApp'tan yaz</button>
+      ${r.phone ? html`<a class="btn btn-sm btn-ghost" href=${'tel:' + r.phone}>${r.phone}</a>` : null}
       ${r.contact_email ? html`<a class="btn btn-sm btn-ghost" href=${'mailto:' + r.contact_email}>${r.contact_email}</a>` : null}
     </div>`;
 
@@ -622,7 +642,7 @@ function ProvaAdmin() {
               <tr>
                 <td>${fmtLong(r.day)}</td><td>${hhmm(r.start_time)}–${hhmm(r.end_time)}</td>
                 <td><b>${r.full_name}</b><div class="sub mono">${r.student_no}</div>${r.note ? html`<div class="sub">“${r.note}”</div>` : null}</td>
-                <td>${r.phone ? html`<a href=${waLink(r.phone)} target="_blank" rel="noopener">WhatsApp</a> · ${r.phone}` : '—'}</td>
+                <td><button type="button" class="link-btn" onClick=${() => requestWhatsApp('prova', r.id, 'Merhaba ' + r.full_name + ', BÜMT prova odası rezervasyonun hakkında yazıyorum.')}>WhatsApp</button>${r.phone ? ' · ' + r.phone : ''}</td>
                 <td class="actions"><button type="button" class="btn btn-sm btn-danger" onClick=${() => cancel(r)}>İptal et</button></td>
               </tr>`)}</tbody>
           </table></div>`}
@@ -692,8 +712,11 @@ function YoklamaQR() {
     w.document.write('<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>BÜMT Prova Odası QR</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:40px">' +
       '<h1 style="font-size:40px;margin:0 0 8px">BÜMT PROVA ODASI</h1><p style="font-size:22px;margin:0 0 24px">Girişte ve çıkışta bu kodu okut</p>' +
       '<img src="' + img + '" style="width:420px;height:420px"><p style="font-size:18px;margin-top:24px">Telefonunun kamerasıyla okut ya da sitede <b>Prova Odası → QR okut</b></p>' +
-      '<p style="font-size:14px;color:#555">Çıkarken anahtarı bıraktığını onaylamayı unutma.</p><script>window.onload=function(){window.print()}<\/script></body></html>');
+      '<p style="font-size:14px;color:#555">Çıkarken anahtarı bıraktığını onaylamayı unutma.</p></body></html>');
     w.document.close();
+    const im = w.document.querySelector('img');
+    const go = () => { try { w.focus(); w.print(); } catch (e) {} };
+    if (im && !im.complete) im.onload = go; else setTimeout(go, 200);
   };
   return html`
     <section class="panel pad stack">
@@ -754,7 +777,7 @@ function AttendanceList() {
 // ---------------------------------------------------------------------
 // Enstrüman kursları
 // ---------------------------------------------------------------------
-function KurslarAdmin() {
+function KurslarAdmin({ me }) {
   const [list, setList] = useState(null);
   const [stats, setStats] = useState({});
   const [edit, setEdit] = useState(null);
@@ -762,15 +785,21 @@ function KurslarAdmin() {
 
   const load = useCallback(async () => {
     const [{ data: ins }, { data: sl }, { data: bk }] = await Promise.all([
-      sb.from('instructors').select('*, profiles(student_no)').order('instrument').order('full_name'),
+      sb.from('instructors').select(INSTRUCTOR_COLS + ', profiles(student_no)').order('instrument').order('full_name'),
       sb.from('instructor_slots').select('instructor_id'),
       sb.from('lesson_bookings').select('instructor_id,status').neq('status', 'reddedildi')
     ]);
+    let insRows = ins || [];
+    if (me.isSuper) {
+      const { data: c } = await sb.rpc('admin_instructor_contacts');
+      const map = {}; (c || []).forEach((x) => { map[x.id] = x; });
+      insRows = insRows.map((t) => ({ ...t, phone: (map[t.id] || {}).phone || '', email: (map[t.id] || {}).email || '' }));
+    }
     const s = {};
     const get = (id) => (s[id] = s[id] || { slots: 0, booked: 0, waiting: 0 });
     (sl || []).forEach((x) => { get(x.instructor_id).slots++; });
     (bk || []).forEach((x) => { if (x.status === 'onaylandi') get(x.instructor_id).booked++; else get(x.instructor_id).waiting++; });
-    setList(ins || []); setStats(s);
+    setList(insRows); setStats(s);
   }, []);
   useEffect(() => { load(); }, [load]);
   if (!list) return html`<${Loading} />`;
@@ -792,7 +821,7 @@ function KurslarAdmin() {
                 <td><div class="row nowrap-row"><${Avatar} url=${t.avatar_url} name=${t.full_name} size=${36} /><div><b>${t.full_name}</b><div class="sub">${[t.department, t.class_year].filter(Boolean).join(' · ')}</div></div></div></td>
                 <td>${t.instrument}</td><td>${t.kind}</td>
                 <td class="mono">${t.profiles ? t.profiles.student_no : html`<span class="muted">—</span>`}</td>
-                <td>${s.slots} müsait · ${s.booked} dolu${s.waiting ? html` · <span class="badge badge-wait">${s.waiting} talep</span>` : null}${!t.email && !t.profile_id ? html`<div class="sub red">E-posta yok, bildirim gitmez</div>` : null}</td>
+                <td>${s.slots} müsait · ${s.booked} dolu${s.waiting ? html` · <span class="badge badge-wait">${s.waiting} talep</span>` : null}${me.isSuper && !t.email && !t.profile_id ? html`<div class="sub red">E-posta yok, bildirim gitmez</div>` : null}</td>
                 <td><span class=${'badge ' + (t.active ? 'badge-ok' : 'badge-no')}>${t.active ? 'Sitede' : 'Gizli'}</span></td>
                 <td class="actions">
                   <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setCal(t)}>Takvim ve talepler</button>
@@ -802,12 +831,12 @@ function KurslarAdmin() {
           })}</tbody>
         </table>`}
       </div>
-      ${edit ? html`<${InstructorEdit} t=${edit} onClose=${() => setEdit(null)} onSaved=${() => { setEdit(null); load(); }} />` : null}
+      ${edit ? html`<${InstructorEdit} me=${me} t=${edit} onClose=${() => setEdit(null)} onSaved=${() => { setEdit(null); load(); }} />` : null}
       ${cal ? html`<${Modal} title=${cal.full_name + ' · takvim ve talepler'} wide=${true} onClose=${() => { setCal(null); load(); }}><${InstructorScheduleEditor} instructor=${cal} /><//>` : null}
     </div>`;
 }
 
-function InstructorEdit({ t, onClose, onSaved }) {
+function InstructorEdit({ me, t, onClose, onSaved }) {
   const [f, setF] = useState({
     full_name: t.full_name || '', instrument: t.instrument || 'Gitar', kind: t.kind || KINDS[1], department: t.department || '',
     class_year: t.class_year || '', phone: t.phone || '', email: t.email || '', bio: t.bio || '', active: t.id ? t.active : true, avatar_url: t.avatar_url || '',
@@ -819,16 +848,17 @@ function InstructorEdit({ t, onClose, onSaved }) {
   const lookup = async () => {
     const no = f.student_no.trim();
     if (!no) return setF({ ...f, profile_id: null });
-    const { data } = await sb.from('profiles').select('id,full_name,department,class_year,phone,contact_email,status').eq('student_no', no).maybeSingle();
+    const { data } = await sb.from('profiles').select('id,full_name,department,class_year,status').eq('student_no', no).maybeSingle();
     if (!data) return toast('Bu öğrenci numarasıyla üye bulunamadı.', 'err');
-    setF({ ...f, profile_id: data.id, full_name: f.full_name || data.full_name, department: f.department || data.department, class_year: f.class_year || data.class_year, phone: f.phone || data.phone, email: f.email || data.contact_email || '' });
+    setF({ ...f, profile_id: data.id, full_name: f.full_name || data.full_name, department: f.department || data.department, class_year: f.class_year || data.class_year });
     toast(data.full_name + ' hesabı bağlandı' + (data.status !== 'onaylandi' ? ' (üyeliği henüz onaylı değil)' : '') + '.');
   };
   const save = async (e) => {
     e.preventDefault();
     if (f.student_no.trim() && !f.profile_id) return toast('Önce "Bul ve bağla" ile hesabı bağla ya da numarayı sil.', 'err');
     setBusy(true);
-    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, department: f.department, class_year: f.class_year, phone: f.phone, email: f.email.trim(), bio: f.bio, avatar_url: f.avatar_url, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
+    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, department: f.department, class_year: f.class_year, bio: f.bio, avatar_url: f.avatar_url, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
+    if (me.isSuper || !t.id) { row.phone = f.phone; row.email = f.email.trim(); }
     const { error } = t.id ? await sb.from('instructors').update(row).eq('id', t.id) : await sb.from('instructors').insert(row);
     setBusy(false);
     if (error) return toast(errMsg(error), 'err');
@@ -872,8 +902,9 @@ function InstructorEdit({ t, onClose, onSaved }) {
           <${Field} label="Tür"><select class="inp" value=${f.kind} onChange=${set('kind')}>${KINDS.map((k) => html`<option>${k}</option>`)}</select><//>
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
-          <${Field} label="WhatsApp numarası" hint="Sadece giriş yapan üyeler görür"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>
-          <${Field} label="E-posta" hint="Ders talepleri buraya gönderilir"><input class="inp" type="email" value=${f.email} onInput=${set('email')} /><//>
+          ${me.isSuper || !t.id ? html`
+          <${Field} label="WhatsApp numarası" hint="Boşsa bağlı hesabın telefonu kullanılır; sitede görünmez"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>
+          <${Field} label="E-posta" hint="Ders talepleri buraya gönderilir"><input class="inp" type="email" value=${f.email} onInput=${set('email')} /><//>` : null}
         </div>
         <${Field} label="Kısa tanıtım"><textarea class="inp" rows="2" value=${f.bio} onInput=${set('bio')}></textarea><//>
         <label class="check"><input type="checkbox" checked=${f.active} onChange=${set('active')} />Sitede göster</label>
@@ -995,7 +1026,8 @@ function DinletiRequestCard({ r, busy, onDecide, onCancel }) {
       ${r.note ? html`<div class="sub pre"><b>Not:</b> ${r.note}</div>` : null}
       <div class="sub"><b>Başvuran:</b> ${r.full_name} · <span class="mono">${r.student_no}</span>${[r.department, r.class_year].filter(Boolean).length ? ' · ' + [r.department, r.class_year].filter(Boolean).join(' · ') : ''}</div>
       <div class="row">
-        ${r.phone ? html`<a class="btn btn-sm btn-wa" href=${waLink(r.phone, 'Merhaba ' + r.full_name + ', BÜMT dinleti başvurun hakkında yazıyorum.')} target="_blank" rel="noopener">WhatsApp</a><a class="btn btn-sm btn-ghost" href=${'tel:' + r.phone}>${r.phone}</a>` : null}
+        <button type="button" class="btn btn-sm btn-wa" onClick=${() => requestWhatsApp('dinleti', r.id, 'Merhaba ' + r.full_name + ', BÜMT dinleti başvurun hakkında yazıyorum.')}>WhatsApp'tan yaz</button>
+        ${r.phone ? html`<a class="btn btn-sm btn-ghost" href=${'tel:' + r.phone}>${r.phone}</a>` : null}
         ${r.contact_email ? html`<a class="btn btn-sm btn-ghost" href=${'mailto:' + r.contact_email}>${r.contact_email}</a>` : null}
       </div>
       ${onDecide ? html`
@@ -1320,7 +1352,7 @@ function Responses({ form, onClose }) {
 // ---------------------------------------------------------------------
 // Hesabım
 // ---------------------------------------------------------------------
-function Hesap({ me }) {
+function Hesap({ me, refresh }) {
   const [pw, setPw] = useState({ a: '', b: '' });
   const [mail, setMail] = useState({ contact_email: me.profile.contact_email || '', notify_mail: me.profile.notify_mail !== false });
   const submit = async (e) => {
@@ -1340,6 +1372,7 @@ function Hesap({ me }) {
   };
   return html`
     <div class="stack-lg">
+      <${MfaSettings} me=${me} />
       <form class="panel pad stack narrow" onSubmit=${saveMail}>
         <h2 class="h2">Bildirimler</h2>
         <p class="muted small">Yetkin olan işlerdeki yeni talepler (ör. prova odası) bu adrese e-postayla gelir.</p>
@@ -1377,9 +1410,136 @@ function AdminApp() {
   let body;
   if (me === undefined) body = html`<div class="login-bg"><${Loading} /></div>`;
   else if (!me) body = html`<${Login} />`;
+  else if (me.needsMfa) body = html`<${MfaChallenge} refresh=${refresh} />`;
   else if (!me.isAdmin) body = html`<${NoAccess} />`;
   else body = html`<${Shell} me=${me} route=${route} refresh=${refresh} />`;
   return html`${body}<${Toaster} />`;
+}
+
+// ---------------------------------------------------------------------
+// İki adımlı doğrulama (Google Authenticator / Microsoft Authenticator vb.)
+// ---------------------------------------------------------------------
+function MfaChallenge({ refresh }) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(''); setBusy(true);
+    try {
+      const { data: f, error: le } = await sb.auth.mfa.listFactors();
+      if (le) throw le;
+      const factor = (f.totp || [])[0];
+      if (!factor) throw new Error('Doğrulama uygulaması bulunamadı.');
+      const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code.replace(/\s/g, '') });
+      if (error) throw error;
+      await refresh();
+    } catch (x) { setErr(/invalid|code/i.test(String(x.message)) ? 'Kod hatalı ya da süresi geçmiş. Uygulamadaki güncel kodu yaz.' : errMsg(x)); }
+    setBusy(false);
+  };
+  return html`
+    <div class="login-bg">
+      <form class="login" onSubmit=${submit}>
+        <div class="login-brand"><img src="/assets/logo.png" alt="" /><div><b>BÜMT</b><span>İki adımlı doğrulama</span></div></div>
+        <p class="small">Doğrulama uygulamandaki (Google Authenticator vb.) 6 haneli kodu yaz.</p>
+        <${Field} label="Doğrulama kodu"><input class="inp mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required value=${code} onInput=${(e) => setCode(e.target.value)} /><//>
+        ${err ? html`<p class="form-err" role="alert">${err}</p>` : null}
+        <button type="submit" class="btn btn-red btn-block" disabled=${busy}>${busy ? 'Kontrol ediliyor…' : 'Doğrula'}</button>
+        <button type="button" class="link-btn" onClick=${() => sb.auth.signOut()}>Çıkış yap</button>
+      </form>
+    </div>`;
+}
+
+function MfaSettings({ me }) {
+  const [factors, setFactors] = useState(null);
+  const [enroll, setEnroll] = useState(null);
+  const [code, setCode] = useState('');
+  const load = useCallback(async () => {
+    const { data } = await sb.auth.mfa.listFactors();
+    setFactors((data && data.totp) || []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const start = async () => {
+    const { data: all } = await sb.auth.mfa.listFactors();
+    for (const f of ((all && all.all) || []).filter((x) => x.status !== 'verified')) await sb.auth.mfa.unenroll({ factorId: f.id });
+    const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'BÜMT ' + new Date().toISOString().slice(0, 10) });
+    if (error) return toast(errMsg(error), 'err');
+    setEnroll(data); setCode('');
+  };
+  const verify = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: enroll.id, code: code.replace(/\s/g, '') });
+    if (error) return toast('Kod hatalı. Uygulamadaki güncel kodu yaz.', 'err');
+    setEnroll(null);
+    toast('İki adımlı doğrulama açıldı. Bundan sonra panele girerken kod istenecek.');
+    load();
+  };
+  const remove = async (f) => {
+    if (!confirm('İki adımlı doğrulama kapatılsın mı? Hesabın daha az güvenli olur.')) return;
+    const { error } = await sb.auth.mfa.unenroll({ factorId: f.id });
+    if (error) return toast(errMsg(error), 'err');
+    toast('İki adımlı doğrulama kapatıldı.');
+    load();
+  };
+  if (!factors) return null;
+  const on = factors.length > 0;
+  return html`
+    <section class=${'panel pad stack narrow ' + (!on && me.isSuper ? 'mfa-warn' : '')}>
+      <h2 class="h2">İki adımlı doğrulama ${on ? html`<span class="badge badge-ok">Açık</span>` : html`<span class="badge badge-red">Kapalı</span>`}</h2>
+      <p class="muted small">Açıkken panele girmek için şifrenin yanında telefonundaki doğrulama uygulamasının (Google Authenticator, Microsoft Authenticator, 1Password…) ürettiği kod da gerekir. Şifren çalınsa bile kimse hesabını kullanamaz.${me.isSuper && !on ? ' Süper yönetici olduğun için mutlaka açmanı öneririm.' : ''}</p>
+      ${on ? html`<button type="button" class="btn btn-danger self-start" onClick=${() => remove(factors[0])}>Kapat</button>`
+      : enroll ? html`
+        <form class="stack" onSubmit=${verify}>
+          <ol class="small mfa-steps">
+            <li>Telefonuna Google Authenticator ya da Microsoft Authenticator kur.</li>
+            <li>Uygulamada "+" → "QR kod tara" de ve bu kodu okut.</li>
+            <li>Uygulamanın gösterdiği 6 haneli kodu aşağıya yaz.</li>
+          </ol>
+          <img class="mfa-qr" src=${enroll.totp.qr_code} alt="İki adımlı doğrulama QR kodu" />
+          <span class="sub">QR okutamıyorsan bu anahtarı elle gir: <code class="mono">${enroll.totp.secret}</code></span>
+          <${Field} label="6 haneli kod"><input class="inp mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required value=${code} onInput=${(e) => setCode(e.target.value)} /><//>
+          <button type="submit" class="btn btn-red self-start">Doğrula ve aç</button>
+        </form>`
+      : html`<button type="button" class="btn btn-red self-start" onClick=${start}>İki adımlı doğrulamayı aç</button>`}
+    </section>`;
+}
+
+// ---------------------------------------------------------------------
+// Güvenlik kayıtları (sadece süper yönetici)
+// ---------------------------------------------------------------------
+const AUDIT_LABELS = {
+  uyelik_durumu: 'Üyelik durumu değişti', rol_degisti: 'Rol değişti', super_yetki: 'Süper yetki',
+  iletisim_bilgisi_degisti: 'İletişim bilgisi değiştirildi', iletisim_acildi: 'WhatsApp ile iletişim açıldı',
+  hesap_silindi: 'Hesap silindi', sifre_elle_belirlendi: 'Şifre elle belirlendi',
+  rol_eklendi: 'Rol eklendi', rol_silindi: 'Rol silindi', rol_yetkileri: 'Rol yetkileri değişti'
+};
+function AuditLog() {
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    sb.from('audit_log').select('*').order('id', { ascending: false }).limit(300).then(({ data, error }) => {
+      if (error) toast(errMsg(error), 'err');
+      setRows(data || []);
+    });
+  }, []);
+  if (!rows) return html`<${Loading} />`;
+  return html`
+    <div class="stack">
+      <p class="muted small">Rol ve yetki değişiklikleri, üye onayları, silinen hesaplar ve yetkililerin hangi üyenin WhatsApp'ını açtığı burada kayıtlıdır. Bu sayfayı sadece süper yönetici görür.</p>
+      <div class="panel table-wrap">
+        ${rows.length === 0 ? html`<${Empty}>Henüz kayıt yok.<//>` : html`
+        <table class="tbl">
+          <thead><tr><th>Zaman</th><th>Kim</th><th>İşlem</th><th>Kime / neye</th><th>Detay</th></tr></thead>
+          <tbody>${rows.map((r) => html`
+            <tr>
+              <td class="sub">${fmtDateTime(r.at)}</td>
+              <td>${r.actor_name || '—'}</td>
+              <td>${AUDIT_LABELS[r.action] || r.action}</td>
+              <td>${r.target_name || '—'}</td>
+              <td class="sub">${r.detail}</td>
+            </tr>`)}</tbody>
+        </table>`}
+      </div>
+    </div>`;
 }
 
 function NoAccess() {

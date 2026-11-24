@@ -38,8 +38,6 @@ function requestMail(b, base, name) {
       ${row('Getirecekleri ekipman', esc((b.equipment || []).join(', ')))}
       ${row('Not', nl(b.note))}
       ${row('Başvuran', esc(p.full_name) + ' (' + esc(p.student_no) + ')')}
-      ${row('Telefon', esc(p.phone))}
-      ${row('E-posta', esc(p.contact_email))}
       ${row('Bölüm', esc([p.department, p.class_year].filter(Boolean).join(' · ')))}
     </table>
     ${wa ? `<div style="margin:0 0 12px">${btn(wa, "Başvurana WhatsApp'tan yaz", '#1F8A4C')}</div>` : ''}

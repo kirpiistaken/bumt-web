@@ -59,8 +59,6 @@ function requestMail(b, base) {
     <table style="border-collapse:collapse;margin-bottom:16px">
       ${row('Öğrenci', esc(p.full_name))}
       ${row('Öğrenci no', esc(p.student_no))}
-      ${row('Telefon', esc(p.phone))}
-      ${row('E-posta', esc(p.contact_email))}
       ${row('Bölüm', esc([p.department, p.class_year].filter(Boolean).join(' · ')))}
       ${row('İstediği saat', esc(slot(b)))}
     </table>
@@ -148,7 +146,7 @@ module.exports = async (req, res) => {
     if (fresh) await notifyStudent(fresh, base);
     const p = b.profiles || {};
     return page(res, status === 'onaylandi' ? 'Talep onaylandı' : 'Talep reddedildi', status === 'onaylandi'
-      ? `<p style="margin:0 0 12px">${esc(slot(b))} artık takvimde dolu görünüyor.</p><p style="margin:0 0 16px">Şimdi öğrenciyle iletişime geç: <b>${esc(p.full_name)}</b>, ${esc(p.phone)}</p>${waLink(p.phone) ? btn(waLink(p.phone), "WhatsApp'tan yaz", '#D7301F') : ''}`
+      ? `<p style="margin:0 0 12px">${esc(slot(b))} artık takvimde dolu görünüyor.</p><p style="margin:0 0 16px">Şimdi <b>${esc(p.full_name)}</b> ile iletişime geç.</p>${waLink(p.phone) ? btn(waLink(p.phone), "WhatsApp'tan yaz", '#D7301F') : ''}`
       : '<p>Öğrenci başka bir saat seçebilir.</p>', true);
   }
 
