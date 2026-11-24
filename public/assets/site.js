@@ -146,6 +146,50 @@ function Home() {
       ${events === null ? html`<${Loading} />` : events.length === 0 ? html`
         <p class="muted">Şu an duyurulmuş bir etkinlik yok. Takipte kal!</p>` : html`
         <div class="cards">${events.map((e, i) => html`<${EventCard} e=${e} i=${i} />`)}</div>`}
+    </section>
+
+    <${Social} />`;
+}
+
+// ---------------------------------------------------------------------
+// Instagram
+// ---------------------------------------------------------------------
+const IG_ACCOUNTS = [
+  { handle: 'baskentmt', name: 'Başkent Müzik Topluluğu', sub: 'Duyurular, etkinlikler, sahne anları', logo: '/assets/logo.png' },
+  { handle: 'baskent.rock', name: 'Başkent Rock & Metal Komitesi', sub: 'Topluluğumuzun rock & metal komitesi', logo: null }
+];
+const IG_ICON = 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM17.5 6.5h.01';
+const igCode = (u) => { const m = String(u || '').match(/instagram\.com\/(?:[A-Za-z0-9._]+\/)?(?:p|reel|tv)\/([A-Za-z0-9_-]+)/); return m ? m[1] : null; };
+
+function Social() {
+  const [posts, setPosts] = useState([]);
+  useEffect(() => {
+    sb.from('settings').select('instagram_posts').eq('id', 1).maybeSingle().then(({ data }) => {
+      setPosts(((data && data.instagram_posts) || []).map(igCode).filter(Boolean).slice(0, 6));
+    });
+  }, []);
+  return html`
+    <section class="sec">
+      <div class="sec-head"><h2 class="h">Bizi takip edin</h2></div>
+      <div class="ig-accounts">
+        ${IG_ACCOUNTS.map((a) => html`
+          <a class="ig-card" href=${'https://www.instagram.com/' + a.handle + '/'} target="_blank" rel="noopener">
+            <span class="ig-ring">${a.logo ? html`<img src=${a.logo} alt="" />` : html`<span class="h ig-mono">RM</span>`}</span>
+            <span class="ig-txt">
+              <b>@${a.handle}</b>
+              <span>${a.name}</span>
+              <small>${a.sub}</small>
+            </span>
+            <span class="ig-follow">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d=${IG_ICON} /></svg>
+              Takip et
+            </span>
+          </a>`)}
+      </div>
+      ${posts.length ? html`
+        <div class="ig-posts">
+          ${posts.map((c) => html`<iframe class="ig-embed" src=${'https://www.instagram.com/p/' + c + '/embed'} title="Instagram gönderisi" loading="lazy" scrolling="no" allowtransparency="true"></iframe>`)}
+        </div>` : null}
     </section>`;
 }
 

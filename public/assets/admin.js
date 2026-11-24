@@ -1109,6 +1109,31 @@ function DinletiBookings({ d, onClose }) {
 // ---------------------------------------------------------------------
 // Etkinlikler
 // ---------------------------------------------------------------------
+function InstagramPosts() {
+  const [text, setText] = useState(null);
+  useEffect(() => {
+    sb.from('settings').select('instagram_posts').eq('id', 1).maybeSingle().then(({ data }) => setText(((data && data.instagram_posts) || []).join('\n')));
+  }, []);
+  if (text === null) return null;
+  const save = async (e) => {
+    e.preventDefault();
+    const links = text.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+    const bad = links.filter((l) => !/instagram\.com\/(?:[A-Za-z0-9._]+\/)?(?:p|reel|tv)\/[A-Za-z0-9_-]+/.test(l));
+    if (bad.length) return toast('Bu link bir Instagram gönderisi değil: ' + bad[0], 'err');
+    if (links.length > 6) return toast('En fazla 6 gönderi ekleyebilirsin.', 'err');
+    const { error } = await sb.from('settings').update({ instagram_posts: links }).eq('id', 1);
+    if (error) return toast(errMsg(error), 'err');
+    toast('Instagram gönderileri kaydedildi.');
+  };
+  return html`
+    <form class="panel pad stack" onSubmit=${save}>
+      <h2 class="h2">Ana sayfadaki Instagram gönderileri</h2>
+      <p class="muted small">Ana sayfada "Bizi takip edin" bölümünde gösterilecek gönderilerin linklerini yaz (her satıra bir tane, en fazla 6). Instagram'da gönderi → ••• → "Bağlantıyı kopyala". Boş bırakırsan sadece hesap kartları görünür.</p>
+      <textarea class="inp mono" rows="4" value=${text} onInput=${(e) => setText(e.target.value)} placeholder="https://www.instagram.com/p/XXXXXXXXX/"></textarea>
+      <button type="submit" class="btn btn-dark self-start">Kaydet</button>
+    </form>`;
+}
+
 function EtkinlikAdmin() {
   const [list, setList] = useState(null);
   const [forms, setForms] = useState([]);
@@ -1124,6 +1149,7 @@ function EtkinlikAdmin() {
   if (!list) return html`<${Loading} />`;
   return html`
     <div class="stack">
+      <${InstagramPosts} />
       <div class="toolbar"><p class="muted small">Yayındaki etkinlikler ana sayfada "Sıra" numarasına göre listelenir.</p><button type="button" class="btn btn-red" onClick=${() => setEdit({})}>Yeni etkinlik</button></div>
       ${list.length === 0 ? html`<${Empty}>Henüz etkinlik yok.<//>` : html`
         <div class="ev-list">
