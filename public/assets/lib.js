@@ -6,6 +6,7 @@ export { html, render, useState, useEffect, useMemo, useRef, useCallback };
 
 export let sb = null;
 export let HAS_FACULTY = false;
+export let HAS_MAPS = false;
 
 export async function initSupabase() {
   const r = await fetch('/api/config');
@@ -14,6 +15,7 @@ export async function initSupabase() {
   sb = createClient(c.url, c.key, { auth: { persistSession: true, autoRefreshToken: true } });
   // 015_fakulte.sql çalıştırıldı mı? (çalıştırılmadıysa site fakülte olmadan çalışmaya devam eder)
   try { const t = await sb.from('instructors').select('faculty').limit(1); HAS_FACULTY = !t.error; } catch (e) { HAS_FACULTY = false; }
+  try { const t = await sb.from('events').select('maps_url').limit(1); HAS_MAPS = !t.error; } catch (e) { HAS_MAPS = false; }
   if (HAS_FACULTY) { PROFILE_COLS += ',faculty'; INSTRUCTOR_COLS += ',faculty'; }
   return sb;
 }
@@ -541,4 +543,13 @@ export function UserTags({ uid }) {
   useEffect(() => { if (uid) loadTags().then((d) => setList(d.map[uid] || [])); }, [uid]);
   if (!list.length) return null;
   return html`<span class="utags">${list.map((t) => html`<${TagChip} tag=${t} />`)}</span>`;
+}
+
+// Google Maps linki: link verildiyse onu, adres yazıldıysa arama linkini kullan
+export function mapsHref(v) {
+  const x = String(v || '').trim();
+  if (!x) return '';
+  if (/^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)/i.test(x)) return x;
+  if (/^https?:\/\//i.test(x)) return '';
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(x);
 }

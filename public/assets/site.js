@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS, UserTags, HAS_FACULTY, SchoolLine, FacultySelect, INSTRUCTOR_COLS
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS, UserTags, mapsHref, HAS_FACULTY, SchoolLine, FacultySelect, INSTRUCTOR_COLS
 } from './lib.js';
 
 const parseRoute = () => {
@@ -229,7 +229,11 @@ function EventCard({ e, i }) {
         <h3>${e.title}</h3>
         ${when ? html`<span class="ev-when">${when}</span>` : null}
         ${e.description ? html`<p class="muted">${e.description}</p>` : null}
-        ${href ? html`<a class="btn btn-dark" href=${href} target=${ext ? '_blank' : null} rel=${ext ? 'noopener' : null}>${e.cta_label || (e.form_id ? 'Başvur' : 'Detaylar')}</a>` : null}
+        ${href || mapsHref(e.maps_url) ? html`<div class="row-sm ev-actions">
+          ${href ? html`<a class="btn btn-dark" href=${href} target=${ext ? '_blank' : null} rel=${ext ? 'noopener' : null}>${e.cta_label || (e.form_id ? 'Başvur' : 'Detaylar')}</a>` : null}
+          ${mapsHref(e.maps_url) ? html`<a class="btn btn-ghost btn-map" href=${mapsHref(e.maps_url)} target="_blank" rel="noopener" aria-label=${'Konumu Google Haritalar\'da aç: ' + (e.venue || e.title)}>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#D7301F" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>Konum</a>` : null}
+        </div>` : null}
       </div>
     </article>`;
 }
