@@ -993,20 +993,28 @@ function InstructorEdit({ me, t, onClose, onSaved }) {
   });
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  const [linked, setLinked] = useState(t.profile_id ? { faculty: t.faculty, department: t.department, class_year: t.class_year } : null);
+  useEffect(() => {
+    if (!t.profile_id) return;
+    sb.from('profiles').select('department,class_year' + (HAS_FACULTY ? ',faculty' : '')).eq('id', t.profile_id).maybeSingle().then(({ data }) => { if (data) setLinked(data); });
+  }, [t.profile_id]);
 
   const lookup = async () => {
     const no = f.student_no.trim();
     if (!no) return setF({ ...f, profile_id: null });
     const { data } = await sb.from('profiles').select('id,full_name,department,class_year,status' + (HAS_FACULTY ? ',faculty' : '')).eq('student_no', no).maybeSingle();
     if (!data) return toast('Bu öğrenci numarasıyla üye bulunamadı.', 'err');
-    setF({ ...f, profile_id: data.id, full_name: f.full_name || data.full_name, faculty: f.faculty || data.faculty || '', department: f.department || data.department, class_year: f.class_year || data.class_year });
+    setF({ ...f, profile_id: data.id, full_name: f.full_name || data.full_name });
+    setLinked(data);
     toast(data.full_name + ' hesabı bağlandı' + (data.status !== 'onaylandi' ? ' (üyeliği henüz onaylı değil)' : '') + '.');
   };
   const save = async (e) => {
     e.preventDefault();
     if (f.student_no.trim() && !f.profile_id) return toast('Önce "Bul ve bağla" ile hesabı bağla ya da numarayı sil.', 'err');
     setBusy(true);
-    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, ...(HAS_FACULTY ? { faculty: f.faculty } : {}), department: f.department, class_year: f.class_year, bio: f.bio, avatar_url: f.avatar_url, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
+    const own = f.profile_id && linked ? { ...(HAS_FACULTY ? { faculty: linked.faculty || '' } : {}), department: linked.department || '', class_year: linked.class_year || '' }
+      : { ...(HAS_FACULTY ? { faculty: f.faculty } : {}), department: f.department, class_year: f.class_year };
+    const row = { full_name: f.full_name, instrument: f.instrument, kind: f.kind, ...own, bio: f.bio, avatar_url: f.avatar_url, active: f.active, profile_id: f.student_no.trim() ? f.profile_id : null };
     if (me.isSuper || !t.id) { row.phone = f.phone; row.email = f.email.trim(); }
     const { error } = t.id ? await sb.from('instructors').update(row).eq('id', t.id) : await sb.from('instructors').insert(row);
     setBusy(false);
@@ -1042,16 +1050,21 @@ function InstructorEdit({ me, t, onClose, onSaved }) {
           </div>
         </div>
         <div class="row align-end">
-          <${Field} label="Üye hesabına bağla (öğrenci no)" hint="İsteğe bağlı; bağlanan üye kendi takvimini yönetir"><input class="inp" value=${f.student_no} onInput=${(e) => setF({ ...f, student_no: e.target.value, profile_id: null })} /><//>
+          <${Field} label="Üye hesabına bağla (öğrenci no)" hint="İsteğe bağlı; bağlanan üye kendi takvimini yönetir"><input class="inp" value=${f.student_no} onInput=${(e) => { setF({ ...f, student_no: e.target.value, profile_id: null }); setLinked(null); }} /><//>
           <button type="button" class="btn btn-ghost" onClick=${lookup}>${f.profile_id ? 'Bağlandı ✓' : 'Bul ve bağla'}</button>
         </div>
         <div class="fgrid">
           <${Field} label="Ad Soyad"><input class="inp" required value=${f.full_name} onInput=${set('full_name')} /><//>
           <${Field} label="Enstrüman"><input class="inp" required list="ins-list" value=${f.instrument} onInput=${set('instrument')} /><datalist id="ins-list">${INSTRUMENTS.map((i) => html`<option value=${i}></option>`)}</datalist><//>
           <${Field} label="Tür"><select class="inp" value=${f.kind} onChange=${set('kind')}>${KINDS.map((k) => html`<option>${k}</option>`)}</select><//>
+          ${f.profile_id ? html`
+          <div class="fld span-2"><span>Fakülte / bölüm / sınıf</span>
+            <div class="linked-box">${linked && (linked.faculty || linked.department || linked.class_year) ? html`<${SchoolLine} p=${linked} />` : html`<span class="sub">Üye profilinde henüz yazılı değil.</span>`}
+              <span class="sub">Bağlı hesaptan geliyor; üye kendi profilinden değiştirir.</span></div>
+          </div>` : html`
           ${HAS_FACULTY ? html`<${Field} label="Fakülte"><${FacultySelect} value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>` : null}
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
-          <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
+          <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>`}
           ${me.isSuper || !t.id ? html`
           <${Field} label="WhatsApp numarası" hint="Boşsa bağlı hesabın telefonu kullanılır; sitede görünmez"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>
           <${Field} label="E-posta" hint="Ders talepleri buraya gönderilir"><input class="inp" type="email" value=${f.email} onInput=${set('email')} /><//>` : null}
