@@ -1,5 +1,7 @@
 // Günlük temizlik (Vercel Cron): onaylanmasının üzerinden 7 gün geçen prova çıkış fotoğraflarını siler.
 const { SB_URL, SECRET, sb } = require('./_auth');
+const { moderatePost } = require('./_moderate');
+const { siteUrl } = require('./_mail');
 
 module.exports = async (req, res) => {
   const cron = process.env.CRON_SECRET;
@@ -19,5 +21,10 @@ module.exports = async (req, res) => {
     await sb('/rest/v1/prova_attendance?id=eq.' + r.id, { method: 'PATCH', body: JSON.stringify({ photos: [], photos_deleted_at: new Date().toISOString() }) });
     deleted++;
   }
-  res.end(JSON.stringify({ ok: true, cleaned: deleted }));
+  // Kontrolü yarım kalmış pazar ilanlarını denetle
+  let checked = 0;
+  const old = new Date(Date.now() - 10 * 60e3).toISOString();
+  const k = await sb('/rest/v1/market_posts?select=id&active=eq.true&review=eq.kontrol&created_at=lt.' + encodeURIComponent(old) + '&limit=50');
+  for (const p of (k.ok && Array.isArray(k.data) ? k.data : [])) { await moderatePost(p.id, siteUrl(req), true); checked++; }
+  res.end(JSON.stringify({ ok: true, cleaned: deleted, pazar_checked: checked }));
 };

@@ -388,3 +388,5 @@ body { overflow-x: clip; }
   .evp-actions .btn { flex: 1 1 auto; }
 }
 @media (max-width: 820px) { .evp { margin-top: -24px; } }
+.post-hidden { opacity: .85; border-style: dashed; }
+.post-flag { font-size: 13px; font-weight: 600; background: var(--pink); border-radius: 8px; padding: 8px 10px; }

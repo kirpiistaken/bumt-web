@@ -1296,10 +1296,13 @@ function Pazar({ me }) {
   const canModerate = me && me.can && me.can('uyeler');
 
   const load = useCallback(async () => {
-    const { data, error } = await sb.from('market_posts').select('*').eq('active', true).order('created_at', { ascending: false });
+    let { data, error } = await sb.from('market_posts').select(MARKET_COLS + ',review,review_reason').eq('active', true).order('created_at', { ascending: false });
+    if (error && /review/.test(error.message || '')) ({ data, error } = await sb.from('market_posts').select(MARKET_COLS).eq('active', true).order('created_at', { ascending: false }));
     if (error) toast(errMsg(error), 'err');
     setPosts(data || []);
-  }, []);
+    // Kontrolü yarım kalmış kendi ilanların varsa tekrar kontrol ettir
+    (data || []).filter((p) => p.review === 'kontrol' && p.user_id === uid).forEach((p) => checkPost(p.id, false).then(() => setTimeout(load, 300)));
+  }, [uid]);
   useEffect(() => { load(); }, [load]);
   if (!posts) return html`<${Loading} />`;
 
@@ -1317,10 +1320,13 @@ function Pazar({ me }) {
     e.preventDefault();
     if (!form.title.trim()) return toast('İlana bir başlık yaz.', 'err');
     const row = { kind: form.kind, title: form.title.trim(), my_role: form.my_role.trim(), looking_for: form.looking_for, genre: form.genre.trim(), description: form.description.trim() };
-    const { error } = form.id ? await sb.from('market_posts').update(row).eq('id', form.id) : await sb.from('market_posts').insert(row);
+    const { data, error } = form.id ? await sb.from('market_posts').update(row).eq('id', form.id).select('id').single() : await sb.from('market_posts').insert(row).select('id').single();
     if (error) return toast(errMsg(error), 'err');
-    toast(form.id ? 'İlanın güncellendi.' : 'İlanın yayında!');
     setForm(null);
+    toast('İlanın kontrol ediliyor…');
+    const r = await checkPost(data.id, !form.id);
+    if (r && r.status === 'incelemede') toast('İlanın uygunsuz ifade içeriyor olabilir; yönetim kontrol ettikten sonra yayınlanacak.', 'err');
+    else toast(form.id ? 'İlanın güncellendi.' : 'İlanın yayında!');
     load();
   };
   const close = async (p, moderate) => {
@@ -1328,6 +1334,12 @@ function Pazar({ me }) {
     const { error } = await sb.from('market_posts').update({ active: false }).eq('id', p.id);
     if (error) return toast(errMsg(error), 'err');
     toast('İlan kaldırıldı.');
+    load();
+  };
+  const publish = async (p) => {
+    const { error } = await sb.from('market_posts').update({ review: '', review_reason: '' }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('İlan yayına alındı.');
     load();
   };
   const toggleRole = (r) => setForm({ ...form, looking_for: form.looking_for.includes(r) ? form.looking_for.filter((x) => x !== r) : [...form.looking_for, r] });
@@ -1373,8 +1385,11 @@ function Pazar({ me }) {
         <div class="cards">
           ${shown.map((p) => {
             const mine = p.user_id === uid;
+            const hidden = p.review === 'incelemede' || p.review === 'kontrol';
             return html`
-              <article class="card pad stack post">
+              <article class=${'card pad stack post' + (hidden ? ' post-hidden' : '')}>
+                ${hidden ? html`<div class="post-flag">${p.review === 'kontrol' ? 'Kontrol ediliyor…' : mine ? 'İncelemede — yönetim onaylayınca yayınlanacak' : '⚠️ Gizlendi: ' + (p.review_reason || 'uygunsuz olabilir')}
+                  ${canModerate && !mine && p.review === 'incelemede' ? html` <button type="button" class="link-btn" onClick=${() => publish(p)}>Yayına al</button>` : null}</div>` : null}
                 <div class="row between"><span class="tag tag-red">${p.kind}</span><span class="muted small">${fmtShort(String(p.created_at).slice(0, 10))}</span></div>
                 <h3 class="post-title">${p.title}</h3>
                 <div class="row nowrap">
@@ -1399,6 +1414,15 @@ function Pazar({ me }) {
           })}
         </div>`}
     </div>`;
+}
+
+const MARKET_COLS = 'id,user_id,kind,title,my_role,looking_for,genre,description,display_name,avatar_url,active,created_at';
+async function checkPost(id, isNew) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch('/api/pazar', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify({ id, is_new: isNew }) });
+    return await r.json().catch(() => null);
+  } catch (e) { return null; }
 }
 
 function Uye({ id, me }) {
