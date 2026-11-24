@@ -128,12 +128,20 @@ p { margin: 0; }
 .ig-txt small { color: var(--muted); font-size: 13px; }
 .ig-follow { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; background: var(--ink); color: #fff; font-weight: 600; font-size: 14px; flex: none; }
 .ig-card:hover .ig-follow { background: var(--red); }
-.ig-posts { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-.ig-embed { width: 100%; height: 560px; border: 2px solid var(--ink); border-radius: 14px; background: #fff; }
+.ig-grid { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.ig-tile { position: relative; display: block; aspect-ratio: 4 / 5; border: 2px solid var(--ink); border-radius: 16px; overflow: hidden; box-shadow: 4px 4px 0 var(--ink);
+  background: linear-gradient(135deg, #F9CE34, #EE2A7B 50%, #6228D7); color: #fff; text-decoration: none; transition: transform .12s, box-shadow .12s; }
+.ig-tile:hover { color: #fff; transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--red); }
+.ig-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0; transition: opacity .25s; }
+.ig-ok img { opacity: 1; }
+.ig-fallback { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-weight: 700; }
+.ig-badge { position: absolute; top: 10px; right: 10px; z-index: 2; width: 30px; height: 30px; border-radius: 50%; background: rgba(20,20,20,.7); display: flex; align-items: center; justify-content: center; }
+.ig-hover { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-weight: 700; background: rgba(20,20,20,.55); opacity: 0; transition: opacity .15s; }
+.ig-tile:hover .ig-hover, .ig-tile:focus-visible .ig-hover { opacity: 1; }
 @media (max-width: 520px) {
   .ig-card { flex-wrap: wrap; }
   .ig-follow { width: 100%; justify-content: center; }
-  .ig-embed { height: 520px; }
+  .ig-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 }
 
 /* Prova */

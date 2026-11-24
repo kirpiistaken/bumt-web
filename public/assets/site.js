@@ -161,11 +161,28 @@ const IG_ACCOUNTS = [
 const IG_ICON = 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM17.5 6.5h.01';
 const igCode = (u) => { const m = String(u || '').match(/instagram\.com\/(?:[A-Za-z0-9._]+\/)?(?:p|reel|tv)\/([A-Za-z0-9_-]+)/); return m ? m[1] : null; };
 
+function IgTile({ p }) {
+  const [state, setState] = useState('loading');
+  return html`
+    <a class=${'ig-tile ig-' + state} href=${'https://www.instagram.com/' + (p.video ? 'reel' : 'p') + '/' + p.code + '/'} target="_blank" rel="noopener" aria-label="Gönderiyi Instagram'da aç">
+      ${state !== 'error' ? html`<img src=${'/api/ig?code=' + p.code} alt="" loading="lazy" onLoad=${() => setState('ok')} onError=${() => setState('error')} />` : null}
+      <span class="ig-fallback" aria-hidden="true">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d=${IG_ICON} /></svg>
+        <span>Gönderiyi gör</span>
+      </span>
+      ${p.video ? html`<span class="ig-badge" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>` : null}
+      <span class="ig-hover" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d=${IG_ICON} /></svg>
+        Instagram'da aç
+      </span>
+    </a>`;
+}
+
 function Social() {
   const [posts, setPosts] = useState([]);
   useEffect(() => {
     sb.from('settings').select('instagram_posts').eq('id', 1).maybeSingle().then(({ data }) => {
-      setPosts(((data && data.instagram_posts) || []).map(igCode).filter(Boolean).slice(0, 6));
+      setPosts(((data && data.instagram_posts) || []).map((u) => ({ code: igCode(u), video: /\/(reel|tv)\//.test(u), url: u })).filter((x) => x.code).slice(0, 6));
     });
   }, []);
   return html`
@@ -187,8 +204,8 @@ function Social() {
           </a>`)}
       </div>
       ${posts.length ? html`
-        <div class="ig-posts">
-          ${posts.map((c) => html`<iframe class="ig-embed" src=${'https://www.instagram.com/p/' + c + '/embed'} title="Instagram gönderisi" loading="lazy" scrolling="no" allowtransparency="true"></iframe>`)}
+        <div class="ig-grid">
+          ${posts.map((p) => html`<${IgTile} p=${p} />`)}
         </div>` : null}
     </section>`;
 }
