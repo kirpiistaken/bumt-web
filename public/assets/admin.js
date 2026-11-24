@@ -1229,10 +1229,7 @@ function DinletiEdit({ d, onClose, onSaved }) {
           <${Field} label="Başlık"><input class="inp" required value=${f.title} onInput=${set('title')} /><//>
           <${Field} label="Tarih"><input class="inp" type="date" required min=${todayStr()} value=${f.day} onInput=${set('day')} /><//>
           <${Field} label="Başlangıç saati"><input class="inp" type="time" required value=${f.start_time} onInput=${set('start_time')} /><//>
-          <${Field} label="Yer"><input class="inp" value=${f.venue} onInput=${set('venue')} placeholder="Örn. Bağlıca Kampüsü Amfi" /><//>
-          ${html`<${Field} label="Google Maps konumu" hint="Google Haritalar'da yeri bul → Paylaş → Bağlantıyı kopyala ve buraya yapıştır. Adres de yazabilirsin." wide=${true}>
-            <div class="row nowrap-row"><input class="inp" value=${f.maps_url} onInput=${set('maps_url')} placeholder="https://maps.app.goo.gl/…" />
-            ${mapsHref(f.maps_url) ? html`<a class="btn btn-ghost btn-sm" href=${mapsHref(f.maps_url)} target="_blank" rel="noopener">Dene</a>` : null}</div><//>`}
+          <${Field} label="Yer"><input class="inp" value=${f.venue} onInput=${set('venue')} /><//>
           <${Field} label="Performans süresi (dk)"><input class="inp" type="number" min="5" max="180" value=${f.slot_minutes} onInput=${set('slot_minutes')} /><//>
           <${Field} label="Performans sayısı"><input class="inp" type="number" min="1" max="40" value=${f.slot_count} onInput=${set('slot_count')} /><//>
         </div>
@@ -1389,7 +1386,10 @@ function EventEdit({ e, forms, onClose, onSaved }) {
           <${Field} label="Etiket" hint="Festival, Open Mic, Konser…"><input class="inp" value=${f.tag} onInput=${set('tag')} /><//>
           <${Field} label="Tarih" hint="Boş bırakırsan aşağıdaki metin görünür"><input class="inp" type="date" value=${f.starts_on} onInput=${set('starts_on')} /><//>
           <${Field} label="Tarih metni"><input class="inp" value=${f.date_text} onInput=${set('date_text')} placeholder="Örn. 14 Mart, 20:00" /><//>
-          <${Field} label="Yer"><input class="inp" value=${f.venue} onInput=${set('venue')} /><//>
+          <${Field} label="Yer"><input class="inp" value=${f.venue} onInput=${set('venue')} placeholder="Örn. Harlem Performance, Kızılay" /><//>
+          <${Field} label="Google Maps konumu" hint="Google Haritalar'da yeri bul → Paylaş → Bağlantıyı kopyala ve buraya yapıştır. Adres de yazabilirsin." wide=${true}>
+            <div class="row nowrap-row"><input class="inp" value=${f.maps_url} onInput=${set('maps_url')} placeholder="https://maps.app.goo.gl/…" />
+            ${mapsHref(f.maps_url) ? html`<a class="btn btn-ghost btn-sm" href=${mapsHref(f.maps_url)} target="_blank" rel="noopener">Dene</a>` : null}</div><//>
           <${Field} label="Sıra" hint="Küçük numara önce görünür"><input class="inp" type="number" value=${f.sort} onInput=${set('sort')} /><//>
         </div>
         <${Field} label="Açıklama"><textarea class="inp" rows="3" value=${f.description} onInput=${set('description')}></textarea><//>
