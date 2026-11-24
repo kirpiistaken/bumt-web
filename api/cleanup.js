@@ -21,10 +21,25 @@ module.exports = async (req, res) => {
     await sb('/rest/v1/prova_attendance?id=eq.' + r.id, { method: 'PATCH', body: JSON.stringify({ photos: [], photos_deleted_at: new Date().toISOString() }) });
     deleted++;
   }
+  // Enstrüman adı düzeltmesi: "Yan Flüt" → "Flüt" (kayıtlı verilerde)
+  let renamed = 0;
+  const OLD = 'Yan Flüt', NEW = 'Flüt';
+  const fix = (arr) => Array.from(new Set((arr || []).map((x) => (x === OLD ? NEW : x))));
+  const pr = await sb('/rest/v1/profiles?select=id,instruments&instruments=cs.' + encodeURIComponent('{"' + OLD + '"}'));
+  for (const r of (pr.ok && Array.isArray(pr.data) ? pr.data : [])) {
+    const u = await sb('/rest/v1/profiles?id=eq.' + r.id, { method: 'PATCH', body: JSON.stringify({ instruments: fix(r.instruments) }) }); if (u.ok) renamed++;
+  }
+  const mp = await sb('/rest/v1/market_posts?select=id,looking_for,my_role&or=(looking_for.cs.' + encodeURIComponent('{"' + OLD + '"}') + ',my_role.ilike.*' + encodeURIComponent(OLD) + '*)');
+  for (const r of (mp.ok && Array.isArray(mp.data) ? mp.data : [])) {
+    const u = await sb('/rest/v1/market_posts?id=eq.' + r.id, { method: 'PATCH', body: JSON.stringify({ looking_for: fix(r.looking_for), my_role: String(r.my_role || '').split(OLD).join(NEW) }) }); if (u.ok) renamed++;
+  }
+  const ins = await sb('/rest/v1/instructors?instrument=eq.' + encodeURIComponent(OLD), { method: 'PATCH', body: JSON.stringify({ instrument: NEW }), headers: { Prefer: 'return=representation' } });
+  if (ins.ok && Array.isArray(ins.data)) renamed += ins.data.length;
+
   // Kontrolü yarım kalmış pazar ilanlarını denetle
   let checked = 0;
   const old = new Date(Date.now() - 10 * 60e3).toISOString();
   const k = await sb('/rest/v1/market_posts?select=id&active=eq.true&review=eq.kontrol&created_at=lt.' + encodeURIComponent(old) + '&limit=50');
   for (const p of (k.ok && Array.isArray(k.data) ? k.data : [])) { await moderatePost(p.id, siteUrl(req), true); checked++; }
-  res.end(JSON.stringify({ ok: true, cleaned: deleted, pazar_checked: checked }));
+  res.end(JSON.stringify({ ok: true, cleaned: deleted, pazar_checked: checked, renamed }));
 };

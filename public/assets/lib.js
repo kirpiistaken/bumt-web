@@ -39,7 +39,7 @@ export const PERMS = [
   ['formlar', 'Formlar ve başvurular']
 ];
 
-export const INSTRUMENTS = ['Gitar', 'Elektro Gitar', 'Bas Gitar', 'Davul', 'Piyano / Klavye', 'Keman', 'Viyola', 'Çello', 'Vokal', 'Yan Flüt', 'Saksafon', 'Bağlama', 'Ukulele', 'Diğer'];
+export const INSTRUMENTS = ['Gitar', 'Elektro Gitar', 'Bas Gitar', 'Davul', 'Piyano / Klavye', 'Keman', 'Viyola', 'Çello', 'Vokal', 'Flüt', 'Saksafon', 'Bağlama', 'Ukulele', 'Diğer'];
 export const KINDS = ['Hoca', 'Ders veren öğrenci', 'Gönüllü öğrenci'];
 export const FACULTIES = [
   'Diş Hekimliği Fakültesi',
