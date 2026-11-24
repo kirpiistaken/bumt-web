@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS
 } from './lib.js';
 
 const parseRoute = () => {
@@ -221,6 +221,8 @@ function EventCard({ e, i }) {
 // Prova odası
 // ---------------------------------------------------------------------
 function Prova({ me }) {
+  const [myRules, setMyRules] = useState(null);
+  const [guestOk, setGuestOk] = useState(false);
   const [data, setData] = useState(null);
   const [week, setWeek] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -229,13 +231,18 @@ function Prova({ me }) {
 
   const load = useCallback(async () => {
     const [{ data: settings }, { data: slots }, { data: bookings }] = await Promise.all([
-      sb.from('settings').select('id,prova_open_days,prova_max_per_week,dinleti_open_days').eq('id', 1).single(),
+      sb.from('settings').select('id,prova_open_days,prova_max_per_week,dinleti_open_days,prova_rules,prova_rules_version').eq('id', 1).single(),
       sb.from('prova_slots').select('*').eq('active', true).order('sort').order('start_time'),
       sb.from('prova_bookings').select('id,slot_id,day,user_id,display_name,status').in('day', fridays).neq('status', 'reddedildi')
     ]);
-    setData({ settings: settings || { prova_open_days: 4, prova_max_per_week: 1 }, slots: slots || [], bookings: bookings || [] });
+    setData({ settings: settings || { prova_open_days: 4, prova_max_per_week: 1, prova_rules: '', prova_rules_version: 0 }, slots: slots || [], bookings: bookings || [] });
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!me) { setMyRules(null); return; }
+    sb.from('profiles').select('prova_rules_version').eq('id', me.user.id).maybeSingle()
+      .then(({ data: d, error }) => setMyRules(error ? 999999 : ((d && d.prova_rules_version) || 0)));
+  }, [me && me.user.id]);
 
   if (!data) return html`<${Loading} />`;
   const today = todayStr();
@@ -268,6 +275,19 @@ function Prova({ me }) {
     load();
   };
   const hasMineThisWeek = data.bookings.some((b) => b.day === w.f && b.user_id === uid);
+  const rulesText = data.settings.prova_rules || '';
+  const rulesVer = data.settings.prova_rules_version || 0;
+  if (me && myRules === null && rulesText) return html`<${Loading} />`;
+  const mustAccept = rulesText && (me ? myRules < rulesVer : !guestOk);
+  const accept = async () => {
+    if (!me) { setGuestOk(true); return; }
+    const { data: v, error } = await sb.rpc('accept_prova_rules');
+    if (error) return toast(errMsg(error), 'err');
+    setMyRules(v || rulesVer);
+    toast('Kuralları onayladın. Artık prova odası talebi gönderebilirsin.');
+    window.scrollTo(0, 0);
+  };
+  if (mustAccept) return html`<${ProvaRulesGate} text=${rulesText} me=${me} updated=${me && myRules > 0} onAccept=${accept} />`;
 
   return html`
     <div class="stack-lg">
@@ -314,6 +334,28 @@ function Prova({ me }) {
           <h2 class="h2">${fmtLong(w.f)} henüz kilitli</h2>
           <p class="muted">Bu haftanın talepleri <b class="ink">${fmtLong(w.opens)}</b> açılır.</p>
         </div>`}
+      ${rulesText ? html`
+        <section class="card pad stack rules-card" id="kurallar">
+          <h2 class="h2">Prova odası kuralları</h2>
+          <ol class="rules-list">${rulesLines(rulesText).map((l) => html`<li>${l}</li>`)}</ol>
+        </section>` : null}
+    </div>`;
+}
+
+const rulesLines = (t) => String(t || '').split(/\n+/).map((l) => l.replace(/^\s*\d+[.)]\s*/, '').trim()).filter(Boolean);
+
+function ProvaRulesGate({ text, me, updated, onAccept }) {
+  const [ok, setOk] = useState(false);
+  return html`
+    <div class="card pad-lg stack narrow rules-gate">
+      <span class="tag tag-red self-start">${updated ? 'Kurallar güncellendi' : 'Önce kuralları oku'}</span>
+      <h1 class="h page-h">Prova odası kuralları</h1>
+      <p class="muted">${updated ? 'Prova odası kuralları değişti. Devam etmeden önce yeni kuralları okuyup onaylaman gerekiyor.' : 'Prova odası hepimizin. Rezervasyon yapmadan önce lütfen aşağıdaki kuralları dikkatlice oku.'}</p>
+      <ol class="rules-list">${rulesLines(text).map((l) => html`<li>${l}</li>`)}</ol>
+      ${me ? html`
+        <label class="check check-top key-check"><input type="checkbox" checked=${ok} onChange=${(e) => setOk(e.target.checked)} /><span><b>Kuralları okudum, anladım ve uyacağımı kabul ediyorum.</b> Kurallara uymazsam prova odası hakkımın kısıtlanabileceğini biliyorum.</span></label>
+        <button type="button" class="btn btn-red self-start" disabled=${!ok} onClick=${onAccept}>Onaylıyorum, devam et</button>`
+      : html`<button type="button" class="btn btn-red self-start" onClick=${onAccept}>Okudum, devam et</button>`}
     </div>`;
 }
 
@@ -1036,6 +1078,13 @@ function Yoklama({ code, me }) {
   const [key, setKey] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [photos, setPhotos] = useState([null, null, null]);
+  const setPhoto = (i) => (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const next = photos.slice(); next[i] = { file: f, url: URL.createObjectURL(f) }; setPhotos(next);
+  };
   useEffect(() => {
     if (me === undefined) return;
     if (!me) {
@@ -1050,12 +1099,24 @@ function Yoklama({ code, me }) {
 
   const checkout = async (e) => {
     e.preventDefault();
+    if (photos.some((x) => !x)) return toast('Odanın 3 fotoğrafını da çekmelisin.', 'err');
     if (!key) return toast('Çıkış için anahtarı bıraktığını onaylamalısın.', 'err');
     setBusy(true);
-    const { data, error } = await sb.rpc('prova_checkout', { p_code: code, p_key_returned: key, p_note: note.trim() });
+    try {
+      const folder = me.user.id + '/' + todayStr() + '-' + Math.random().toString(36).slice(2, 10);
+      const paths = [];
+      for (let i = 0; i < 3; i++) {
+        const blob = await compressImage(photos[i].file, 1600);
+        const path = folder + '/' + (i + 1) + '.jpg';
+        const { error: ue } = await sb.storage.from('prova-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+        if (ue) throw ue;
+        paths.push(path);
+      }
+      const { data, error } = await sb.rpc('prova_checkout', { p_code: code, p_key_returned: key, p_note: note.trim(), p_photos: paths });
+      if (error) throw error;
+      setRes(data);
+    } catch (x) { toast(errMsg(x), 'err'); }
     setBusy(false);
-    if (error) return toast(errMsg(error), 'err');
-    setRes(data);
   };
 
   const slot = res && res.start_time ? hhmm(res.start_time) + '–' + hhmm(res.end_time) : '';
@@ -1075,9 +1136,21 @@ function Yoklama({ code, me }) {
         <h1 class="h2">Çıkış yapıyorsun</h1>
         <p class="muted">Giriş saatin: <b class="ink">${timeTR(res.check_in_at)}</b> · Rezervasyonun: ${slot}</p>
         <form class="stack" onSubmit=${checkout}>
+          <div class="stack-sm">
+            <b>1. Odanın 3 fotoğrafını çek</b>
+            <span class="muted small">Odanın genel görünümü, ekipmanların durumu ve zemin görünsün. Fotoğraflar yönetim kurulunun kontrolünden sonra silinir.</span>
+            <div class="photo-grid">
+              ${[0, 1, 2].map((i) => html`
+                <label class=${'photo-slot ' + (photos[i] ? 'photo-on' : '')}>
+                  ${photos[i] ? html`<img src=${photos[i].url} alt=${(i + 1) + '. fotoğraf'} />` : html`<span><b>+</b>${i + 1}. fotoğraf</span>`}
+                  <input type="file" accept="image/*" capture="environment" onChange=${setPhoto(i)} />
+                </label>`)}
+            </div>
+          </div>
+          <b>2. Anahtarı teslim et</b>
           <label class="check check-top key-check"><input type="checkbox" checked=${key} onChange=${(e) => setKey(e.target.checked)} /><span><b>Anahtarı bıraktım / teslim ettim.</b></span></label>
           <label class="lbl"><span>Not (isteğe bağlı)</span><textarea class="inp" rows="2" maxlength="300" value=${note} onInput=${(e) => setNote(e.target.value)} placeholder="Örn. Anahtarı güvenlik görevlisine bıraktım. Odada bir sorun varsa buraya yaz."></textarea></label>
-          <button type="submit" class="btn btn-red self-start" disabled=${busy || !key}>Çıkışı kaydet</button>
+          <button type="submit" class="btn btn-red self-start" disabled=${busy || !key || photos.some((x) => !x)}>${busy ? 'Fotoğraflar yükleniyor…' : 'Çıkışı kaydet'}</button>
         </form>`
       : html`
         <div class="big-ok" aria-hidden="true">✓</div>

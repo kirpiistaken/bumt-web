@@ -649,6 +649,7 @@ function ProvaAdmin() {
       </section>
 
       <${AttendanceList} />
+      <${ProvaRulesEditor} />
       <${YoklamaQR} />
 
       <form class="panel pad stack" onSubmit=${saveSettings}>
@@ -740,27 +741,40 @@ function YoklamaQR() {
 
 function AttendanceList() {
   const [rows, setRows] = useState(null);
+  const [view, setView] = useState(null);
   const today = todayStr();
-  useEffect(() => {
+  const load = useCallback(() => {
     const from = addDaysLocal(today, -30);
     sb.rpc('prova_attendance_list', { p_from: from, p_to: today }).then(({ data, error }) => {
       if (error) toast(errMsg(error), 'err');
       setRows(data || []);
     });
   }, []);
+  useEffect(() => { load(); }, [load]);
   const state = (r) => {
-    if (r.check_out_at) return ['badge-ok', 'Tamam'];
+    if (r.check_out_at) return ['badge-ok', 'Çıkış yapıldı'];
     if (r.check_in_at) return ['badge-wait', r.day < today ? 'Çıkış okutulmadı' : 'İçeride'];
     return r.day < today ? ['badge-red', 'Gelmedi'] : ['badge-no', 'Bekleniyor'];
   };
-  const exp = () => downloadCSV('prova-yoklama.csv', [['Tarih', 'Saat', 'Üye', 'Öğrenci no', 'Giriş', 'Çıkış', 'Anahtar bırakıldı', 'Not'],
-    ...rows.map((r) => [r.day, hhmm(r.start_time) + '-' + hhmm(r.end_time), r.full_name, r.student_no, timeTR(r.check_in_at), timeTR(r.check_out_at), r.key_returned ? 'Evet' : '', r.key_note])]);
+  const review = (r) => {
+    if (!r.check_out_at) return null;
+    if (r.review_status === 'onaylandi') return html`<span class="badge badge-ok">Kontrol edildi</span>`;
+    if (r.review_status === 'sorunlu') return html`<span class="badge badge-red">Sorun bildirildi</span>`;
+    return html`<span class="badge badge-wait">Kontrol bekliyor</span>`;
+  };
+  const waiting = (rows || []).filter((r) => r.check_out_at && r.review_status === 'bekliyor').length;
+  const exp = () => downloadCSV('prova-yoklama.csv', [['Tarih', 'Saat', 'Üye', 'Öğrenci no', 'Giriş', 'Çıkış', 'Anahtar bırakıldı', 'Not', 'Kontrol', 'Kontrol eden', 'Kontrol notu'],
+    ...rows.map((r) => [r.day, hhmm(r.start_time) + '-' + hhmm(r.end_time), r.full_name, r.student_no, timeTR(r.check_in_at), timeTR(r.check_out_at), r.key_returned ? 'Evet' : '', r.key_note, r.review_status, r.reviewer || '', r.review_note])]);
   return html`
     <section class="panel pad stack">
-      <div class="toolbar"><h2 class="h2">Yoklama kayıtları (son 30 gün)</h2>${rows && rows.length ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${exp}>CSV indir</button>` : null}</div>
+      <div class="toolbar">
+        <h2 class="h2">Yoklama ve oda kontrolü (son 30 gün) ${waiting ? html`<span class="badge badge-wait">${waiting} kontrol bekliyor</span>` : null}</h2>
+        ${rows && rows.length ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${exp}>CSV indir</button>` : null}
+      </div>
+      <p class="muted small">Üye çıkışta odanın 3 fotoğrafını yükler. Fotoğrafları açıp kontrol et; "Oda temiz" dersen fotoğraflar 7 gün sonra otomatik silinir. Sorun varsa "Sorun var" deyip not düş; fotoğraflar silinmez.</p>
       ${!rows ? html`<${Loading} />` : rows.length === 0 ? html`<${Empty}>Son 30 günde onaylı prova yok.<//>` : html`
         <div class="table-wrap"><table class="tbl">
-          <thead><tr><th>Tarih</th><th>Saat</th><th>Üye</th><th>Giriş</th><th>Çıkış</th><th>Anahtar</th><th>Not</th><th>Durum</th></tr></thead>
+          <thead><tr><th>Tarih</th><th>Saat</th><th>Üye</th><th>Giriş</th><th>Çıkış</th><th>Anahtar</th><th>Not</th><th>Durum</th><th>Oda kontrolü</th></tr></thead>
           <tbody>${rows.map((r) => { const st = state(r); return html`
             <tr>
               <td>${fmtShort(r.day)}</td><td>${hhmm(r.start_time)}–${hhmm(r.end_time)}</td>
@@ -769,9 +783,78 @@ function AttendanceList() {
               <td>${r.key_returned ? 'Bırakıldı ✓' : '—'}</td>
               <td class="sub">${r.key_note}</td>
               <td><span class=${'badge ' + st[0]}>${st[1]}</span></td>
+              <td class="actions">${review(r)} ${r.check_out_at ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => setView(r)}>${(r.photos || []).length ? 'Fotoğraflar' : 'Detay'}</button>` : null}</td>
             </tr>`; })}</tbody>
         </table></div>`}
+      ${view ? html`<${AttendanceReview} r=${view} onClose=${() => setView(null)} onDone=${() => { setView(null); load(); }} />` : null}
     </section>`;
+}
+
+function AttendanceReview({ r, onClose, onDone }) {
+  const [urls, setUrls] = useState(null);
+  const [note, setNote] = useState(r.review_note || '');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const ps = r.photos || [];
+    if (!ps.length) { setUrls([]); return; }
+    sb.storage.from('prova-photos').createSignedUrls(ps, 600).then(({ data, error }) => {
+      if (error) { toast(errMsg(error), 'err'); setUrls([]); return; }
+      setUrls((data || []).map((x) => x.signedUrl).filter(Boolean));
+    });
+  }, [r.booking_id]);
+  const decide = async (status) => {
+    if (status === 'sorunlu' && !note.trim()) return toast('Sorunu kısaca not olarak yaz.', 'err');
+    setBusy(true);
+    const { error } = await sb.rpc('review_attendance', { p_booking: r.booking_id, p_status: status, p_note: note.trim() });
+    setBusy(false);
+    if (error) return toast(errMsg(error), 'err');
+    toast(status === 'onaylandi' ? 'Kontrol edildi. Fotoğraflar 7 gün sonra silinecek.' : 'Sorun kaydedildi.');
+    onDone();
+  };
+  return html`
+    <${Modal} title=${r.full_name + ' · ' + fmtShort(r.day) + ' ' + hhmm(r.start_time) + '–' + hhmm(r.end_time)} wide=${true} onClose=${onClose}>
+      <div class="stack">
+        <p class="small">Giriş <b>${timeTR(r.check_in_at)}</b> · Çıkış <b>${timeTR(r.check_out_at)}</b> · Anahtar ${r.key_returned ? 'bırakıldı ✓' : 'onaylanmadı'}</p>
+        ${r.key_note ? html`<p class="req-note pre">“${r.key_note}”</p>` : null}
+        ${r.photos_deleted_at ? html`<p class="muted small">Fotoğraflar ${fmtDateTime(r.photos_deleted_at)} tarihinde silindi.</p>`
+          : urls === null ? html`<${Loading} />`
+          : urls.length === 0 ? html`<p class="muted small">Bu çıkışta fotoğraf yok.</p>`
+          : html`<div class="review-photos">${urls.map((u, i) => html`<a href=${u} target="_blank" rel="noopener"><img src=${u} alt=${(i + 1) + '. oda fotoğrafı'} /></a>`)}</div>`}
+        ${r.reviewed_at ? html`<p class="sub">Son kontrol: ${r.reviewer || '—'} · ${fmtDateTime(r.reviewed_at)}</p>` : null}
+        <${Field} label="Kontrol notu"><textarea class="inp" rows="2" value=${note} onInput=${(e) => setNote(e.target.value)} placeholder="Örn. Kablolar toplanmamış, zeminde çöp var"></textarea><//>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => decide('sorunlu')}>Sorun var</button>
+          <span class="grow"></span>
+          <button type="button" class="btn btn-red" disabled=${busy} onClick=${() => decide('onaylandi')}>Oda temiz, onayla</button>
+        </div>
+      </div>
+    <//>`;
+}
+
+function ProvaRulesEditor() {
+  const [text, setText] = useState(null);
+  const [ver, setVer] = useState(0);
+  useEffect(() => {
+    sb.from('settings').select('prova_rules,prova_rules_version').eq('id', 1).maybeSingle().then(({ data }) => {
+      if (data) { setText(data.prova_rules || ''); setVer(data.prova_rules_version || 0); } else setText('');
+    });
+  }, []);
+  if (text === null) return null;
+  const save = async (e) => {
+    e.preventDefault();
+    if (!confirm('Kurallar kaydedilsin mi? Tüm üyeler bir sonraki prova odası ziyaretinde yeni kuralları tekrar onaylamak zorunda kalacak.')) return;
+    const { data, error } = await sb.rpc('set_prova_rules', { p_rules: text });
+    if (error) return toast(errMsg(error), 'err');
+    setVer(data);
+    toast('Kurallar güncellendi (sürüm ' + data + ').');
+  };
+  return html`
+    <form class="panel pad stack" onSubmit=${save}>
+      <h2 class="h2">Prova odası kuralları <span class="badge badge-no">sürüm ${ver}</span></h2>
+      <p class="muted small">Her satır bir kural. Üyeler prova odası sayfasına girince önce bu kuralları görür ve onaylar; kurallar sayfanın altında da hep yazılı durur. Kaydettiğinde herkes yeni sürümü tekrar onaylar.</p>
+      <textarea class="inp" rows="12" value=${text} onInput=${(e) => setText(e.target.value)}></textarea>
+      <button type="submit" class="btn btn-dark self-start">Kuralları kaydet</button>
+    </form>`;
 }
 
 // ---------------------------------------------------------------------

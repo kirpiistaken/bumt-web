@@ -310,3 +310,16 @@ textarea.inp { resize: vertical; }
 .inp { font-size: 16px; }
 
 .ig-ring > img.ig-cover { object-fit: cover; }
+
+/* Prova kuralları ve çıkış fotoğrafları */
+.rules-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; line-height: 1.55; }
+.rules-list li::marker { font-weight: 700; color: var(--red); }
+.rules-gate { margin: 0 auto; }
+.rules-card { background: var(--cream); }
+.photo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.photo-slot { position: relative; aspect-ratio: 3 / 4; border: 2px dashed var(--ink); border-radius: 12px; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; text-align: center; font-size: 13px; font-weight: 600; }
+.photo-slot span { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.photo-slot span b { font-size: 28px; line-height: 1; color: var(--red); }
+.photo-slot.photo-on { border-style: solid; }
+.photo-slot img { width: 100%; height: 100%; object-fit: cover; }
+.photo-slot input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
