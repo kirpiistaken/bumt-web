@@ -1230,9 +1230,9 @@ function DinletiEdit({ d, onClose, onSaved }) {
           <${Field} label="Tarih"><input class="inp" type="date" required min=${todayStr()} value=${f.day} onInput=${set('day')} /><//>
           <${Field} label="Başlangıç saati"><input class="inp" type="time" required value=${f.start_time} onInput=${set('start_time')} /><//>
           <${Field} label="Yer"><input class="inp" value=${f.venue} onInput=${set('venue')} placeholder="Örn. Bağlıca Kampüsü Amfi" /><//>
-          ${HAS_MAPS ? html`<${Field} label="Google Maps konumu" hint="Google Haritalar'da yeri bul → Paylaş → Bağlantıyı kopyala ve buraya yapıştır. Adres de yazabilirsin." wide=${true}>
+          ${html`<${Field} label="Google Maps konumu" hint="Google Haritalar'da yeri bul → Paylaş → Bağlantıyı kopyala ve buraya yapıştır. Adres de yazabilirsin." wide=${true}>
             <div class="row nowrap-row"><input class="inp" value=${f.maps_url} onInput=${set('maps_url')} placeholder="https://maps.app.goo.gl/…" />
-            ${mapsHref(f.maps_url) ? html`<a class="btn btn-ghost btn-sm" href=${mapsHref(f.maps_url)} target="_blank" rel="noopener">Dene</a>` : null}</div><//>` : null}
+            ${mapsHref(f.maps_url) ? html`<a class="btn btn-ghost btn-sm" href=${mapsHref(f.maps_url)} target="_blank" rel="noopener">Dene</a>` : null}</div><//>`}
           <${Field} label="Performans süresi (dk)"><input class="inp" type="number" min="5" max="180" value=${f.slot_minutes} onInput=${set('slot_minutes')} /><//>
           <${Field} label="Performans sayısı"><input class="inp" type="number" min="1" max="40" value=${f.slot_count} onInput=${set('slot_count')} /><//>
         </div>
@@ -1337,7 +1337,7 @@ function EtkinlikAdmin() {
 
 function EventEdit({ e, forms, onClose, onSaved }) {
   const [f, setF] = useState({
-    title: e.title || '', tag: e.tag || 'Etkinlik', starts_on: e.starts_on || '', date_text: e.date_text || '', venue: e.venue || '', ...(HAS_MAPS ? { maps_url: e.maps_url || '' } : {}),
+    title: e.title || '', tag: e.tag || 'Etkinlik', starts_on: e.starts_on || '', date_text: e.date_text || '', venue: e.venue || '', maps_url: e.maps_url || '',
     description: e.description || '', poster_url: e.poster_url || '', cta_label: e.cta_label || '', cta_url: e.cta_url || '',
     form_id: e.form_id || '', published: e.id ? e.published : true, sort: e.sort || 0
   });
@@ -1360,7 +1360,7 @@ function EventEdit({ e, forms, onClose, onSaved }) {
   };
   const save = async (ev) => {
     ev.preventDefault();
-    if (HAS_MAPS && f.maps_url.trim() && !mapsHref(f.maps_url)) return toast('Konum alanına Google Maps linki ya da adres yaz.', 'err');
+    if (f.maps_url.trim() && !mapsHref(f.maps_url)) return toast('Konum alanına Google Maps linki ya da adres yaz.', 'err');
     const row = { ...f, starts_on: f.starts_on || null, form_id: f.form_id || null, sort: +f.sort || 0 };
     const { error } = e.id ? await sb.from('events').update(row).eq('id', e.id) : await sb.from('events').insert(row);
     if (error) return toast(errMsg(error), 'err');
