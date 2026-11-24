@@ -25,7 +25,7 @@ module.exports = async (req, res) => {
       try {
         const r = await fetch('https://www.instagram.com/' + kind + '/' + code + '/embed/captioned/', { headers: { 'User-Agent': UA } });
         const h = await r.text();
-        out.push({ kind, status: r.status, url: r.url, len: h.length, hasImg: /EmbeddedMediaImage/.test(h), hasDisplay: /display_url/.test(h), sample: (h.match(/<img[^>]{0,300}/g) || []).slice(0, 4) });
+        out.push({ kind, status: r.status, url: r.url, len: h.length, hasImg: /EmbeddedMediaImage/.test(h), hasDisplay: /display_url/.test(h), cdn: (h.match(/.{0,80}(cdninstagram|fbcdn)\.[^"'\s]{0,200}/g) || []).slice(0, 6) });
       } catch (e) { out.push({ kind, error: String(e) }); }
     }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
