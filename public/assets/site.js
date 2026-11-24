@@ -74,6 +74,20 @@ const ICON = {
 };
 const BNAV = [['', 'Ana Sayfa', 'home'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler'], ['pazar', 'Pazar', 'pazar']];
 
+// Numarayı sitede göstermeden doğrudan WhatsApp'ı açar.
+// Pencere tıklama anında açılır (telefon tarayıcıları sonradan açılan pencereleri engeller), numara gelince WhatsApp'a yönlenir.
+async function openWhatsApp(rpc, args, text, noPhoneMsg) {
+  let w = null;
+  try { w = window.open('', '_blank'); } catch (e) { w = null; }
+  const { data: ph, error } = await sb.rpc(rpc, args);
+  if (error || !ph) {
+    if (w) w.close();
+    return toast(error ? errMsg(error) : noPhoneMsg, 'err');
+  }
+  const url = waLink(ph, text);
+  if (w) w.location.href = url; else location.href = url;
+}
+
 function BottomNav({ route }) {
   return html`
     <nav class="bnav" aria-label="Alt menü">
@@ -267,7 +281,6 @@ function Kurslar({ me }) {
   const [filter, setFilter] = useState('Tümü');
   const [selId, setSelId] = useState(null);
   const [picked, setPicked] = useState(null);
-  const [contacts, setContacts] = useState({});
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -281,13 +294,6 @@ function Kurslar({ me }) {
   useEffect(() => { load(); }, [load]);
 
   const approvedMember = me && me.profile && me.profile.status === 'onaylandi';
-  const loadContact = async (id) => {
-    if (contacts[id] !== undefined || !approvedMember) return;
-    const { data: ph, error } = await sb.rpc('instructor_contact', { p_instructor: id });
-    if (error) return toast(errMsg(error), 'err');
-    setContacts((c) => ({ ...c, [id]: ph || '' }));
-  };
-  useEffect(() => { if (selId) loadContact(selId); }, [selId, approvedMember]);
 
   if (!data) return html`<${Loading} />`;
   const instruments = ['Tümü', ...Array.from(new Set(data.ins.map((i) => i.instrument)))];
@@ -306,10 +312,7 @@ function Kurslar({ me }) {
     const cls = 'btn ' + (small ? 'btn-sm ' : '');
     if (!me) return html`<a class=${cls + 'btn-ghost'} href="#/giris">İletişim için giriş yap</a>`;
     if (!approvedMember) return html`<span class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</span>`;
-    const ph = contacts[t.id];
-    if (ph === undefined) return html`<button type="button" class=${cls + 'btn-wa'} onClick=${() => loadContact(t.id)}>WhatsApp'tan yaz</button>`;
-    if (!ph) return html`<span class="muted small">Eğitmen henüz telefon eklememiş.</span>`;
-    return html`<a class=${cls + 'btn-wa'} href=${waLink(ph, waText(t))} target="_blank" rel="noopener">WhatsApp'tan yaz</a><a class=${cls + 'btn-ghost'} href=${'tel:' + ph}>${ph}</a>`;
+    return html`<button type="button" class=${cls + 'btn-wa'} onClick=${() => openWhatsApp('instructor_contact', { p_instructor: t.id }, waText(t), 'Eğitmen henüz telefon eklememiş.')}>WhatsApp'tan yaz</button>`;
   };
 
   let grid = null;
@@ -1048,7 +1051,6 @@ function Pazar({ me }) {
   const [posts, setPosts] = useState(null);
   const [filter, setFilter] = useState('Tümü');
   const [form, setForm] = useState(null);
-  const [contacts, setContacts] = useState({});
   const uid = me && me.user.id;
   const approved = me && me.profile && me.profile.status === 'onaylandi';
   const isMusician = me && me.profile && me.profile.member_type === 'muzisyen';
@@ -1088,11 +1090,6 @@ function Pazar({ me }) {
     if (error) return toast(errMsg(error), 'err');
     toast('İlan kaldırıldı.');
     load();
-  };
-  const showContact = async (p) => {
-    const { data, error } = await sb.rpc('market_contact', { p_post: p.id });
-    if (error) return toast(errMsg(error), 'err');
-    setContacts({ ...contacts, [p.id]: data || '' });
   };
   const toggleRole = (r) => setForm({ ...form, looking_for: form.looking_for.includes(r) ? form.looking_for.filter((x) => x !== r) : [...form.looking_for, r] });
 
@@ -1136,7 +1133,6 @@ function Pazar({ me }) {
       ${shown.length === 0 ? html`<div class="locked"><h2 class="h2">Henüz ilan yok</h2><p class="muted">İlk ilanı sen ver!</p></div>` : html`
         <div class="cards">
           ${shown.map((p) => {
-            const phone = contacts[p.id];
             const mine = p.user_id === uid;
             return html`
               <article class="card pad stack post">
@@ -1157,11 +1153,7 @@ function Pazar({ me }) {
                     <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>İlanı kapat</button>`
                   : !me ? html`<a class="btn btn-sm btn-ghost" href="#/giris">İletişim için giriş yap</a>`
                   : !approved ? html`<span class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</span>`
-                  : phone === undefined ? html`<button type="button" class="btn btn-sm btn-dark" onClick=${() => showContact(p)}>İletişim bilgisini göster</button>`
-                  : phone ? html`
-                    <a class="btn btn-sm btn-wa" href=${waLink(phone, 'Merhaba, BÜMT Müzisyen Pazarı\'ndaki "' + p.title + '" ilanın için yazıyorum.')} target="_blank" rel="noopener">WhatsApp'tan yaz</a>
-                    <a class="btn btn-sm btn-ghost" href=${'tel:' + phone}>${phone}</a>`
-                  : html`<span class="muted small">Bu üye telefon numarası eklememiş.</span>`}
+                  : html`<button type="button" class="btn btn-sm btn-wa" onClick=${() => openWhatsApp('market_contact', { p_post: p.id }, 'Merhaba, BÜMT Müzisyen Pazarı\'ndaki "' + p.title + '" ilanın için yazıyorum.', 'Bu üye telefon numarası eklememiş.')}>WhatsApp'tan yaz</button>`}
                   ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
                 </div>
               </article>`;
