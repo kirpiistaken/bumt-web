@@ -308,3 +308,5 @@ textarea.inp { resize: vertical; }
 .pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-weight: 600; font-size: 13px; color: inherit; cursor: pointer; }
 .pw-eye:hover { background: rgba(0,0,0,.06); }
 .inp { font-size: 16px; }
+
+.ig-ring > img.ig-cover { object-fit: cover; }

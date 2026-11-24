@@ -156,7 +156,7 @@ function Home() {
 // ---------------------------------------------------------------------
 const IG_ACCOUNTS = [
   { handle: 'baskentmt', name: 'Başkent Müzik Topluluğu', sub: 'Duyurular, etkinlikler, sahne anları', logo: '/assets/logo.png' },
-  { handle: 'baskent.rock', name: 'Başkent Rock & Metal Komitesi', sub: 'Topluluğumuzun rock & metal komitesi', logo: null }
+  { handle: 'baskent.rock', name: 'Başkent Rock & Metal Komitesi', sub: 'Topluluğumuzun rock & metal komitesi', logo: '/assets/rmk.jpg', cover: true }
 ];
 const IG_ICON = 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM17.5 6.5h.01';
 const igCode = (u) => { const m = String(u || '').match(/instagram\.com\/(?:[A-Za-z0-9._]+\/)?(?:p|reel|tv)\/([A-Za-z0-9_-]+)/); return m ? m[1] : null; };
@@ -174,7 +174,7 @@ function Social() {
       <div class="ig-accounts">
         ${IG_ACCOUNTS.map((a) => html`
           <a class="ig-card" href=${'https://www.instagram.com/' + a.handle + '/'} target="_blank" rel="noopener">
-            <span class="ig-ring">${a.logo ? html`<img src=${a.logo} alt="" />` : html`<span class="h ig-mono">RM</span>`}</span>
+            <span class="ig-ring">${a.logo ? html`<img src=${a.logo} alt="" class=${a.cover ? 'ig-cover' : ''} />` : html`<span class="h ig-mono">RM</span>`}</span>
             <span class="ig-txt">
               <b>@${a.handle}</b>
               <span>${a.name}</span>
