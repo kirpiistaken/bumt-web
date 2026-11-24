@@ -17,7 +17,21 @@ async function findImage(code) {
 }
 
 module.exports = async (req, res) => {
-  const code = String(new URL(req.url, 'http://x').searchParams.get('code') || '');
+  const u = new URL(req.url, 'http://x');
+  const code = String(u.searchParams.get('code') || '');
+  if (u.searchParams.get('debug') === '1' && /^[A-Za-z0-9_-]{5,40}$/.test(code)) {
+    const out = [];
+    for (const kind of ['p', 'reel']) {
+      try {
+        const r = await fetch('https://www.instagram.com/' + kind + '/' + code + '/embed/captioned/', { headers: { 'User-Agent': UA } });
+        const h = await r.text();
+        out.push({ kind, status: r.status, url: r.url, len: h.length, hasImg: /EmbeddedMediaImage/.test(h), hasDisplay: /display_url/.test(h), sample: (h.match(/<img[^>]{0,300}/g) || []).slice(0, 4) });
+      } catch (e) { out.push({ kind, error: String(e) }); }
+    }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.end(JSON.stringify(out, null, 1));
+  }
   if (!/^[A-Za-z0-9_-]{5,40}$/.test(code)) { res.statusCode = 400; return res.end('geçersiz'); }
   try {
     const src = await findImage(code);
