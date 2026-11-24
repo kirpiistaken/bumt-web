@@ -21,12 +21,19 @@ module.exports = async (req, res) => {
   const code = String(u.searchParams.get('code') || '');
   if (u.searchParams.get('debug') === '1' && /^[A-Za-z0-9_-]{5,40}$/.test(code)) {
     const out = [];
-    for (const kind of ['p', 'reel']) {
+    const tries = [
+      ['embed', 'https://www.instagram.com/p/' + code + '/embed/captioned/', UA],
+      ['fb', 'https://www.instagram.com/p/' + code + '/', 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'],
+      ['google', 'https://www.instagram.com/p/' + code + '/', 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)']
+    ];
+    for (const [k, url, ua] of tries) {
       try {
-        const r = await fetch('https://www.instagram.com/' + kind + '/' + code + '/embed/captioned/', { headers: { 'User-Agent': UA } });
+        const r = await fetch(url, { headers: { 'User-Agent': ua } });
         const h = await r.text();
-        out.push({ kind, status: r.status, url: r.url, len: h.length, hasImg: /EmbeddedMediaImage/.test(h), hasDisplay: /display_url/.test(h), cdn: (h.match(/.{0,80}(cdninstagram|fbcdn)\.[^"'\s]{0,200}/g) || []).slice(0, 6) });
-      } catch (e) { out.push({ kind, error: String(e) }); }
+        out.push({ k, status: r.status, final: r.url, len: h.length,
+          og: (h.match(/<meta[^>]+og:image[^>]+>/) || [''])[0].slice(0, 400),
+          sc: (h.match(/scontent[^"'\s<]{0,250}/g) || []).slice(0, 3) });
+      } catch (e) { out.push({ k, error: String(e) }); }
     }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
