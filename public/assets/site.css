@@ -387,3 +387,4 @@ body { overflow-x: clip; }
   .evp-in { padding-bottom: 36px; }
   .evp-actions .btn { flex: 1 1 auto; }
 }
+@media (max-width: 820px) { .evp { margin-top: -24px; } }
