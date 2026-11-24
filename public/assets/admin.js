@@ -382,12 +382,6 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
       toast(me.isSuper ? 'Sıfırlama linki ' + m.contact_email + ' adresine gönderildi (son 2 dakikada gönderildiyse tekrar gitmez).' : 'Üyenin kayıtlı e-postası varsa sıfırlama linki gönderildi.');
     } catch (err) { toast(err.message, 'err'); }
   };
-  const resetPw = async () => {
-    if (m.contact_email && !confirm('Üyenin e-postası var; şifreyi senin belirlemen yerine "Sıfırlama linki gönder" daha güvenli. Yine de elle yeni şifre belirlemek istiyor musun?')) return;
-    const pw = prompt('Yeni şifre (en az 6 karakter). Üyeye bu şifreyi ilet:', randomPw());
-    if (!pw) return;
-    try { await adminApi('set_password', { user_id: m.id, password: pw }); toast('Şifre değiştirildi: ' + pw); } catch (err) { toast(err.message, 'err'); }
-  };
   const remove = async () => {
     if (!confirm(m.full_name + ' hesabı ve tüm rezervasyonları kalıcı olarak silinsin mi? Bu geri alınamaz.')) return;
     try { await adminApi('delete_user', { user_id: m.id }); toast('Hesap silindi.'); onSaved(); } catch (err) { toast(err.message, 'err'); }
@@ -412,7 +406,6 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
           </div>` : null}
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" onClick=${sendLink}>Sıfırlama linki gönder</button>
-          ${me.isSuper ? html`<button type="button" class="btn btn-ghost" onClick=${resetPw}>Elle şifre belirle</button>` : null}
           <button type="button" class="btn btn-danger" onClick=${remove}>Hesabı sil</button>
           <span class="grow"></span>
           <button type="submit" class="btn btn-red" disabled=${busy}>Kaydet</button>
@@ -512,9 +505,13 @@ function Roller({ me }) {
     load();
   };
   const resetPw = async (p) => {
-    const pw = prompt('Yeni şifre (en az 6 karakter):', randomPw());
-    if (!pw) return;
-    try { await adminApi('set_password', { user_id: p.id, password: pw }); toast('Şifre değiştirildi: ' + pw); } catch (err) { toast(err.message, 'err'); }
+    if (!confirm((p.full_name || p.username) + ' için kayıtlı e-postasına şifre sıfırlama linki gönderilsin mi?')) return;
+    try {
+      const r = await fetch('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ident: p.username }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Gönderilemedi.');
+      toast('Kayıtlı bir e-posta varsa sıfırlama linki gönderildi.');
+    } catch (err) { toast(err.message, 'err'); }
   };
   const remove = async (p) => {
     if (!confirm((p.full_name || p.username) + ' yönetim hesabı silinsin mi?')) return;
@@ -541,7 +538,7 @@ function Roller({ me }) {
                   <td>${me.isSuper || p.id === me.user.id ? html`<input class="inp inp-sm" type="email" aria-label="Bildirim e-postası" placeholder="ornek@gmail.com" value=${p.contact_email || ''} onChange=${(e) => setField(p, 'contact_email', e.target.value.trim())} />` : html`<span class="sub">Gizli</span>`}</td>
                   <td class="c"><input type="checkbox" class="cb" aria-label="E-posta bildirimi alsın" checked=${p.notify_mail !== false} onChange=${(e) => setField(p, 'notify_mail', e.target.checked)} /></td>
                   <td class="actions">
-                    ${me.isSuper ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => resetPw(p)}>Şifre sıfırla</button>` : null}
+                    ${p.username ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => resetPw(p)}>Sıfırlama linki gönder</button>` : null}
                     ${p.is_staff && !p.is_super && p.id !== me.user.id ? html`<button type="button" class="btn btn-sm btn-danger" onClick=${() => remove(p)}>Sil</button>` : null}
                   </td>
                 </tr>`)}
