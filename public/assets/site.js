@@ -213,29 +213,124 @@ function Social() {
 const POSTER_COLORS = [['#D7301F', '#fff'], ['#141414', '#F4EAD5'], ['#F4EAD5', '#141414']];
 function EventCard({ e, i }) {
   const [bg, fg] = POSTER_COLORS[i % 3];
-  const href = e.form_id ? '#/form/' + e.form_id : e.cta_url;
-  const ext = !e.form_id && e.cta_url;
-  const when = [e.starts_on ? fmtLong(e.starts_on) : e.date_text, e.venue].filter(Boolean).join(' · ');
+  const when = e.starts_on ? fmtLong(e.starts_on) : e.date_text;
   return html`
-    <article class="card ev">
-      ${e.poster_url ? html`<img class="ev-poster" src=${e.poster_url} alt=${e.title + ' afişi'} loading="lazy" />` : html`
+    <a class="card ev ev-link" href=${'#/etkinlik/' + e.id} aria-label=${e.title + ' etkinlik sayfası'}>
+      ${e.poster_url ? html`
+        <div class="ev-media">
+          <img class="ev-media-bg" src=${e.poster_url} alt="" aria-hidden="true" loading="lazy" />
+          <img class="ev-media-img" src=${e.poster_url} alt=${e.title + ' afişi'} loading="lazy" />
+        </div>` : html`
         <div class="ev-gen" style=${'background:' + bg + ';color:' + fg}>
           <span class="ev-gen-top">Başkent Müzik Topluluğu</span>
           <span class="h ev-gen-title">${e.title}</span>
           <span class="ev-gen-top">${e.tag}</span>
         </div>`}
       <div class="ev-body">
-        <span class="tag tag-dark">${e.tag}</span>
+        <div class="row-sm"><span class="tag tag-dark">${e.tag}</span>${e.maps_url ? html`<span class="ev-pin">📍 Konum var</span>` : null}</div>
         <h3>${e.title}</h3>
-        ${when ? html`<span class="ev-when">${when}</span>` : null}
-        ${e.description ? html`<p class="muted">${e.description}</p>` : null}
-        ${href || mapsHref(e.maps_url) ? html`<div class="row-sm ev-actions">
-          ${href ? html`<a class="btn btn-dark" href=${href} target=${ext ? '_blank' : null} rel=${ext ? 'noopener' : null}>${e.cta_label || (e.form_id ? 'Başvur' : 'Detaylar')}</a>` : null}
-          ${mapsHref(e.maps_url) ? html`<a class="btn btn-ghost btn-map" href=${mapsHref(e.maps_url)} target="_blank" rel="noopener" aria-label=${'Konumu Google Haritalar\'da aç: ' + (e.venue || e.title)}>
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#D7301F" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>Konum</a>` : null}
+        ${when || e.venue ? html`<div class="ev-meta">
+          ${when ? html`<span><b>${when}</b>${e.date_text && e.starts_on ? ' · ' + e.date_text : ''}</span>` : null}
+          ${e.venue ? html`<span class="muted">${e.venue}</span>` : null}
         </div>` : null}
+        ${e.description ? html`<p class="muted ev-excerpt">${e.description}</p>` : null}
+        <span class="ev-more">Etkinlik sayfası →</span>
       </div>
-    </article>`;
+    </a>`;
+}
+
+// Açıklamadaki linkleri ve @kullanıcı adlarını tıklanabilir yap
+function richText(t) {
+  const out = [];
+  const re = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9._]{2,30})/g;
+  let last = 0, m;
+  while ((m = re.exec(t))) {
+    if (m.index > last) out.push(t.slice(last, m.index));
+    if (m[1]) out.push(html`<a href=${m[1]} target="_blank" rel="noopener">${m[1].replace(/^https?:\/\//, '').slice(0, 40)}</a>`);
+    else out.push(html`<a href=${'https://www.instagram.com/' + m[2].slice(1).replace(/\.$/, '') + '/'} target="_blank" rel="noopener">${m[2]}</a>`);
+    last = m.index + m[0].length;
+  }
+  out.push(t.slice(last));
+  return out;
+}
+
+function EventPage({ id }) {
+  const [e, setE] = useState(undefined);
+  useEffect(() => {
+    sb.from('events').select('*').eq('id', id).eq('published', true).maybeSingle().then(({ data }) => {
+      setE(data || null);
+      if (data) document.title = data.title + ' — BÜMT';
+    });
+    return () => { document.title = 'BÜMT — Başkent Üniversitesi Müzik Topluluğu'; };
+  }, [id]);
+  if (e === undefined) return html`<${Loading} />`;
+  if (!e) return html`<div class="stack"><h1 class="h page-h">Etkinlik bulunamadı</h1><p class="muted">Kaldırılmış ya da yayından alınmış olabilir.</p><a class="btn btn-ghost self-start" href="#/">Ana sayfa</a></div>`;
+
+  const href = e.form_id ? '#/form/' + e.form_id : e.cta_url;
+  const ext = !e.form_id && e.cta_url;
+  const map = mapsHref(e.maps_url);
+  const d = e.starts_on ? new Date(e.starts_on + 'T12:00:00') : null;
+  const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const WDAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+  const gcal = d ? (() => {
+    const ymd = (x) => x.toISOString().slice(0, 10).replace(/-/g, '');
+    const next = new Date(d.getTime() + 86400000);
+    return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(e.title) + '&dates=' + ymd(d) + '/' + ymd(next) +
+      '&details=' + encodeURIComponent((e.date_text ? e.date_text + '\n' : '') + location.href) + '&location=' + encodeURIComponent(e.venue || '');
+  })() : '';
+  const share = async () => {
+    const url = location.origin + '/#/etkinlik/' + e.id;
+    try {
+      if (navigator.share) await navigator.share({ title: e.title, text: e.title + ' — BÜMT', url });
+      else { await navigator.clipboard.writeText(url); toast('Link kopyalandı.'); }
+    } catch (err) { /* vazgeçildi */ }
+  };
+
+  return html`
+    <div class="evp">
+      <section class="evp-hero">
+        ${e.poster_url ? html`<img class="evp-bg" src=${e.poster_url} alt="" aria-hidden="true" />` : null}
+        <div class="evp-shade"></div>
+        <div class="wrap evp-in">
+          <a class="evp-back" href="#/">← Tüm etkinlikler</a>
+          <div class="evp-grid">
+            <div class="evp-poster">
+              ${e.poster_url ? html`<a href=${e.poster_url} target="_blank" rel="noopener" title="Afişi büyüt"><img src=${e.poster_url} alt=${e.title + ' afişi'} /></a>` : html`
+                <div class="ev-gen evp-gen"><span class="ev-gen-top">Başkent Müzik Topluluğu</span><span class="h ev-gen-title">${e.title}</span><span class="ev-gen-top">${e.tag}</span></div>`}
+            </div>
+            <div class="evp-info">
+              <span class="tag tag-red self-start">${e.tag}</span>
+              <h1 class="h evp-title">${e.title}</h1>
+              <div class="evp-facts">
+                ${d ? html`<div class="evp-date"><span class="evp-day">${d.getDate()}</span><span class="evp-mon">${MONTHS[d.getMonth()]}<br /><small>${WDAYS[d.getDay()]}</small></span></div>` : null}
+                <div class="stack-xs">
+                  ${e.date_text ? html`<span class="evp-fact">🕒 ${e.date_text}</span>` : null}
+                  ${e.venue ? html`<span class="evp-fact">📍 ${e.venue}</span>` : null}
+                </div>
+              </div>
+              <div class="evp-actions">
+                ${href ? html`<a class="btn btn-red btn-lg" href=${href} target=${ext ? '_blank' : null} rel=${ext ? 'noopener' : null}>${e.cta_label || (e.form_id ? 'Başvur' : 'Detaylar')}</a>` : null}
+                ${map ? html`<a class="btn btn-lg evp-btn" href=${map} target="_blank" rel="noopener">
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#D7301F" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>Konumu aç</a>` : null}
+              </div>
+              <div class="row-sm">
+                ${gcal ? html`<a class="evp-link" href=${gcal} target="_blank" rel="noopener">＋ Takvime ekle</a>` : null}
+                <button type="button" class="evp-link" onClick=${share}>↗ Paylaş</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      ${e.description ? html`
+        <section class="evp-about">
+          <h2 class="h evp-h2">Etkinlik hakkında</h2>
+          <p class="evp-desc">${richText(e.description)}</p>
+          <div class="row-sm">
+            ${href ? html`<a class="btn btn-red" href=${href} target=${ext ? '_blank' : null} rel=${ext ? 'noopener' : null}>${e.cta_label || (e.form_id ? 'Başvur' : 'Detaylar')}</a>` : null}
+            ${map ? html`<a class="btn btn-ghost" href=${map} target="_blank" rel="noopener">📍 Konum</a>` : null}
+          </div>
+        </section>` : null}
+    </div>`;
 }
 
 // ---------------------------------------------------------------------
@@ -1434,6 +1529,7 @@ function App() {
   else if (p === 'prova') page = html`<${Prova} me=${me} />`;
   else if (p === 'kurslar') page = html`<${Kurslar} me=${me} />`;
   else if (p === 'dinletiler') page = html`<${Dinletiler} me=${me} />`;
+  else if (p === 'etkinlik') page = html`<${EventPage} id=${route.param} />`;
   else if (p === 'form') page = html`<${FormPage} id=${route.param} me=${me} />`;
   else if (p === 'giris') page = html`<${Giris} me=${me} />`;
   else if (p === 'kayit') page = html`<${Kayit} me=${me} />`;
