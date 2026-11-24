@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, staffEmail, errMsg, toast, Toaster, adminApi, PERMS,
   todayStr, fmtLong, fmtShort, fmtDateTime, hhmm, addMinutes, nextFridays, DAY_NAMES,
-  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, PROFILE_COLS, INSTRUCTOR_COLS, requestWhatsApp, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
+  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, PROFILE_COLS, INSTRUCTOR_COLS, requestWhatsApp, loadTags, UserTags, TagChip, tagTextColor, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
 } from './lib.js';
 
 const parseRoute = () => (location.hash.replace(/^#\/?/, '') || '').split('/')[0] || '';
@@ -239,6 +239,7 @@ function Uyeler({ me }) {
 
   return html`
     <div class="stack">
+      <${TagManager} onChange=${load} />
       <div class="toolbar">
         <div class="tabs" role="tablist">
           ${[['bekliyor', 'Bekleyen'], ['onaylandi', 'Onaylı'], ['reddedildi', 'Reddedilen'], ['tumu', 'Tümü']].map(([k, l]) => html`
@@ -257,7 +258,7 @@ function Uyeler({ me }) {
           <tbody>
             ${shown.map((m) => html`
               <tr>
-                <td><div class="row nowrap-row"><${Avatar} url=${m.avatar_url} name=${m.full_name} size=${36} /><div><b>${m.full_name || '—'}</b><div class="sub">${[m.department, m.class_year].filter(Boolean).join(' · ')}</div></div></div></td>
+                <td><div class="row nowrap-row"><${Avatar} url=${m.avatar_url} name=${m.full_name} size=${36} /><div><b>${m.full_name || '—'}</b> <${UserTags} uid=${m.id} /><div class="sub">${[m.department, m.class_year].filter(Boolean).join(' · ')}</div></div></div></td>
                 <td class="mono">${m.student_no}</td>
                 ${me.isSuper ? html`<td>${m.phone}</td>` : null}
                 <td>${m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici'}${(m.instruments || []).length ? html`<div class="sub">${m.instruments.join(', ')}</div>` : null}</td>
@@ -293,11 +294,65 @@ function MemberForm({ f, setF, showPhone }) {
 }
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
+function TagManager({ onChange }) {
+  const [tags, setTags] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [nw, setNw] = useState({ name: '', color: '#2B6CB0' });
+  const load = useCallback(async () => { const d = await loadTags(true); setTags(d.tags.map((t) => ({ ...t }))); }, []);
+  useEffect(() => { load(); }, [load]);
+  if (!tags) return null;
+  const add = async (e) => {
+    e.preventDefault();
+    if (!nw.name.trim()) return;
+    const { error } = await sb.from('tags').insert({ name: nw.name.trim(), color: nw.color, sort: tags.length + 1 });
+    if (error) return toast(errMsg(error), 'err');
+    setNw({ name: '', color: '#2B6CB0' }); toast('Etiket eklendi.'); load(); onChange && onChange();
+  };
+  const upd = (t, k, v) => setTags(tags.map((x) => (x.id === t.id ? { ...x, [k]: v, dirty: true } : x)));
+  const save = async (t) => {
+    const { error } = await sb.from('tags').update({ name: t.name.trim(), color: t.color }).eq('id', t.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('Etiket kaydedildi.'); load(); onChange && onChange();
+  };
+  const del = async (t) => {
+    if (!confirm('"' + t.name + '" etiketi silinsin mi? Tüm üyelerden de kaldırılır.')) return;
+    const { error } = await sb.from('tags').delete().eq('id', t.id);
+    if (error) return toast(errMsg(error), 'err');
+    load(); onChange && onChange();
+  };
+  return html`
+    <section class="panel pad stack">
+      <div class="toolbar">
+        <div class="row"><h2 class="h2">Etiketler</h2>${tags.map((t) => html`<${TagChip} tag=${t} />`)}</div>
+        <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setOpen(!open)}>${open ? 'Kapat' : 'Etiketleri düzenle'}</button>
+      </div>
+      ${open ? html`
+        <p class="muted small">Komite, ekip ya da görev etiketleri oluştur (ör. Rock & Metal Komitesi, Caz Komitesi). Üyeye etiket vermek için üyeyi "Düzenle"den aç. Etiketler sitede üyenin adının göründüğü her yerde çıkar.</p>
+        ${tags.map((t) => html`
+          <div class="row">
+            <input type="color" class="color-in" aria-label="Renk" value=${t.color} onInput=${(e) => upd(t, 'color', e.target.value)} />
+            <input class="inp inp-sm" style="max-width: 260px" aria-label="Etiket adı" value=${t.name} onInput=${(e) => upd(t, 'name', e.target.value)} />
+            <${TagChip} tag=${t} />
+            <button type="button" class=${'btn btn-sm ' + (t.dirty ? 'btn-red' : 'btn-ghost')} disabled=${!t.dirty} onClick=${() => save(t)}>Kaydet</button>
+            <button type="button" class="btn btn-sm btn-danger" onClick=${() => del(t)}>Sil</button>
+          </div>`)}
+        <form class="row" onSubmit=${add}>
+          <input type="color" class="color-in" aria-label="Yeni etiket rengi" value=${nw.color} onInput=${(e) => setNw({ ...nw, color: e.target.value })} />
+          <input class="inp inp-sm" style="max-width: 260px" placeholder="Yeni etiket (ör. Caz Komitesi)" aria-label="Yeni etiket adı" value=${nw.name} onInput=${(e) => setNw({ ...nw, name: e.target.value })} />
+          <button type="submit" class="btn btn-sm btn-dark">Ekle</button>
+        </form>` : null}
+    </section>`;
+}
+
 function MemberEdit({ m, me, roles, onClose, onSaved }) {
   const [f, setF] = useState({
     full_name: m.full_name, phone: m.phone, contact_email: m.contact_email, department: m.department, class_year: m.class_year,
     member_type: m.member_type, instruments_text: (m.instruments || []).join(', '), status: m.status, role_id: m.role_id || ''
   });
+  const [allTags, setAllTags] = useState([]);
+  const [myTags, setMyTags] = useState(null);
+  useEffect(() => { loadTags(true).then((d) => { setAllTags(d.tags); setMyTags(new Set((d.map[m.id] || []).map((t) => t.id))); }); }, [m.id]);
+  const toggleTag = (id) => { const n = new Set(myTags); n.has(id) ? n.delete(id) : n.add(id); setMyTags(n); };
   const [busy, setBusy] = useState(false);
   const save = async (e) => {
     e.preventDefault();
@@ -306,6 +361,14 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
     if (me.isSuper) { patch.phone = f.phone; patch.contact_email = f.contact_email; }
     if (me.can('roller')) patch.role_id = f.role_id || null;
     const { error } = await sb.from('profiles').update(patch).eq('id', m.id);
+    if (!error && myTags) {
+      const before = new Set(((await loadTags()).map[m.id] || []).map((t) => t.id));
+      const add = [...myTags].filter((x) => !before.has(x)).map((tag_id) => ({ profile_id: m.id, tag_id }));
+      const del = [...before].filter((x) => !myTags.has(x));
+      if (add.length) { const r = await sb.from('profile_tags').insert(add); if (r.error) toast(errMsg(r.error), 'err'); }
+      if (del.length) { const r = await sb.from('profile_tags').delete().eq('profile_id', m.id).in('tag_id', del); if (r.error) toast(errMsg(r.error), 'err'); }
+      loadTags(true);
+    }
     setBusy(false);
     if (error) return toast(errMsg(error), 'err');
     toast('Üye güncellendi.');
@@ -342,6 +405,11 @@ function MemberEdit({ m, me, roles, onClose, onSaved }) {
             <${Field} label="Yönetim rolü" hint="Rol verilen üye yönetim paneline öğrenci numarasıyla girebilir"><select class="inp" value=${f.role_id} onChange=${(e) => setF({ ...f, role_id: e.target.value })}>
               <option value="">Rol yok (normal üye)</option>${roles.map((r) => html`<option value=${r.id}>${r.name}</option>`)}</select><//>` : null}
         </div>
+        ${allTags.length && myTags ? html`
+          <div class="stack-sm">
+            <span class="fld"><span>Etiketler</span></span>
+            <div class="row">${allTags.map((t) => html`<button type="button" class=${'tag-pick ' + (myTags.has(t.id) ? 'on' : '')} aria-pressed=${myTags.has(t.id)} style=${'background:' + t.color + ';color:' + tagTextColor(t.color)} onClick=${() => toggleTag(t.id)}>${myTags.has(t.id) ? '✓ ' : ''}${t.name}</button>`)}</div>
+          </div>` : null}
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" onClick=${sendLink}>Sıfırlama linki gönder</button>
           ${me.isSuper ? html`<button type="button" class="btn btn-ghost" onClick=${resetPw}>Elle şifre belirle</button>` : null}

@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS, UserTags
 } from './lib.js';
 
 const parseRoute = () => {
@@ -339,7 +339,7 @@ function Prova({ me }) {
               <div class=${'slot ' + cls}>
                 <div class="stack-xs">
                   <span class="h slot-time">${hhmm(s.start_time)} – ${hhmm(s.end_time)}</span>
-                  <span class="small strong">${status}</span>
+                  <span class="small strong">${status} ${approved && !mine ? html`<${UserTags} uid=${approved.user_id} />` : null}</span>
                 </div>
                 ${action}
               </div>`;
@@ -467,7 +467,7 @@ function Kurslar({ me }) {
                   <${Avatar} url=${t.avatar_url} name=${t.full_name} size=${64} />
                   <div class="stack-xs"><b class="t-name">${t.full_name}</b><span class="muted small">${[t.department, t.class_year].filter(Boolean).join(' · ')}</span></div>
                 </div>
-                <div class="row-sm"><span class="tag tag-dark">${t.instrument}</span><span class="tag tag-cream">${t.kind}</span></div>
+                <div class="row-sm"><span class="tag tag-dark">${t.instrument}</span>${t.kind ? html`<span class="tag tag-cream">${t.kind}</span>` : null}${t.profile_id ? html`<${UserTags} uid=${t.profile_id} />` : null}</div>
                 ${t.bio ? html`<p class="muted small">${t.bio}</p>` : null}
                 <span class="small strong">${n > 0 ? n + ' boş saat' : 'Şu an boş saat yok'}</span>
                 <div class="row">
@@ -487,6 +487,7 @@ function Kurslar({ me }) {
               <span class="muted small strong">Haftalık takvim</span>
               <h2 class="h2">${sel.full_name} · ${sel.instrument}</h2>
               <span class="muted small">${[sel.kind, sel.department, sel.class_year].filter(Boolean).join(' · ')}</span>
+              ${sel.profile_id ? html`<${UserTags} uid=${sel.profile_id} />` : null}
             </div>
             </div>
             <div class="row">
@@ -644,7 +645,7 @@ function Dinletiler({ me }) {
                       const mine = mineHere && mineHere.slot_index === i ? mineHere : null;
                       const t = addMinutes(d.start_time, i * d.slot_minutes);
                       if (mine && mine.status === 'onaylandi') return html`<button type="button" class="dslot dslot-mine" onClick=${() => cancel(mine)}><b>${t}</b><span>Sen · ${mine.perf_type} · onaylandı</span></button>`;
-                      if (approved) return html`<div class="dslot dslot-taken"><b>${t}</b><span>${approved.display_name} · ${approved.perf_type}</span></div>`;
+                      if (approved) return html`<div class="dslot dslot-taken"><b>${t}</b><span>${approved.display_name} · ${approved.perf_type} <${UserTags} uid=${approved.user_id} /></span></div>`;
                       if (mine) return html`<button type="button" class="dslot dslot-pending" onClick=${() => cancel(mine)}><b>${t}</b><span>Başvurun değerlendiriliyor · geri çek</span></button>`;
                       if (mineHere) return html`<div class="dslot dslot-free"><b>${t}</b><span>Boş</span></div>`;
                       return html`<button type="button" class="dslot" onClick=${() => open(d, i)}><b>${t}</b><span>${gate.reason === 'login' ? 'Giriş yap ve başvur' : 'Boş · başvur'}</span></button>`;
@@ -951,7 +952,7 @@ function Profil({ me, refresh }) {
           <h1 class="h page-h">Profilim</h1>
           <span class="muted">${p.student_no ? 'Öğrenci no: ' + p.student_no : 'Kullanıcı adı: ' + (p.username || '')}</span>
         </div>
-        <span class=${'tag ' + statusTag[0]}>${statusTag[1]}</span>
+        <div class="row-sm"><${UserTags} uid=${p.id} /><span class=${'tag ' + statusTag[0]}>${statusTag[1]}</span></div>
       </div>
 
       <div class="card pad row photo-card">
@@ -1274,7 +1275,7 @@ function Pazar({ me }) {
                 <h3 class="post-title">${p.title}</h3>
                 <div class="row nowrap">
                   <${Avatar} url=${p.avatar_url} name=${p.display_name} size=${44} />
-                  <span class="small">${approved ? html`<a href=${'#/uye/' + p.user_id}><b>${p.display_name}</b></a>` : html`<b>${p.display_name}</b>`}${p.my_role ? ' · ' + p.my_role : ''}${p.genre ? ' · ' + p.genre : ''}</span>
+                  <span class="small">${approved ? html`<a href=${'#/uye/' + p.user_id}><b>${p.display_name}</b></a>` : html`<b>${p.display_name}</b>`}${p.my_role ? ' · ' + p.my_role : ''}${p.genre ? ' · ' + p.genre : ''} <${UserTags} uid=${p.user_id} /></span>
                 </div>
                 ${(p.looking_for || []).length ? html`
                   <div class="stack-xs"><span class="muted small strong">Aranıyor</span>
@@ -1315,6 +1316,7 @@ function Uye({ id, me }) {
         <div class="row-sm">
           <span class="tag tag-dark">${m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici'}</span>
           ${m.instructor_of ? html`<span class="tag tag-red">${m.instructor_of} eğitmeni</span>` : null}
+          <${UserTags} uid=${m.id} />
         </div>
         ${(m.instruments || []).length ? html`<span><b>Çaldıkları:</b> ${m.instruments.join(', ')}</span>` : null}
         ${[m.department, m.class_year].filter(Boolean).length ? html`<span class="muted">${[m.department, m.class_year].filter(Boolean).join(' · ')}</span>` : null}

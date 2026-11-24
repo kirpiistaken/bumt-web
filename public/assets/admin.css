@@ -217,3 +217,8 @@ textarea.inp { resize: vertical; }
 
 .review-photos { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 .review-photos img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+.utags { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: middle; }
+.utag { display: inline-flex; align-items: center; min-height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; border: 1px solid rgba(0,0,0,.15); }
+.tag-pick { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 2px solid transparent; font-weight: 600; font-size: 13px; cursor: pointer; opacity: .45; }
+.tag-pick.on { opacity: 1; border-color: var(--ink); }
+.color-in { width: 44px; height: 34px; padding: 2px; border: 1px solid var(--line2); border-radius: 8px; background: #fff; }

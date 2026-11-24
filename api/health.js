@@ -31,6 +31,7 @@ module.exports = async (req, res) => {
     out.sql_011_guvenlik = await chk('/rest/v1/audit_log?select=id&limit=1');
     out.sql_012_instagram = await chk('/rest/v1/settings?select=instagram_posts&limit=1');
     out.sql_013_prova_kurallar = await chk('/rest/v1/settings?select=prova_rules&limit=1');
+    out.sql_014_etiketler = await chk('/rest/v1/tags?select=id&limit=1');
     const a = await sb('/auth/v1/admin/users?per_page=1');
     out.auth_admin = a.ok ? 'ok' : ('hata ' + a.status + ': ' + JSON.stringify(a.data).slice(0, 160));
   }

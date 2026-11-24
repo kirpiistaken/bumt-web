@@ -467,3 +467,36 @@ export async function compressImage(file, max) {
   URL.revokeObjectURL(img.src);
   return await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.8));
 }
+
+// ---- Üye etiketleri ----------------------------------------------------
+let tagsPromise = null;
+export function loadTags(force) {
+  if (!tagsPromise || force) {
+    tagsPromise = Promise.all([
+      sb.from('tags').select('id,name,color,sort').order('sort').order('name'),
+      sb.from('profile_tags').select('profile_id,tag_id')
+    ]).then(([t, pt]) => {
+      const tags = t.data || [];
+      const byId = {}; tags.forEach((x) => { byId[x.id] = x; });
+      const map = {};
+      (pt.data || []).forEach((r) => { if (byId[r.tag_id]) (map[r.profile_id] = map[r.profile_id] || []).push(byId[r.tag_id]); });
+      Object.values(map).forEach((a) => a.sort((x, y) => (x.sort - y.sort) || x.name.localeCompare(y.name, 'tr')));
+      return { tags, map };
+    }).catch(() => ({ tags: [], map: {} }));
+  }
+  return tagsPromise;
+}
+export const tagTextColor = (hex) => {
+  const h = String(hex || '#000000').replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#141414' : '#ffffff';
+};
+export function TagChip({ tag }) {
+  return html`<span class="utag" style=${'background:' + tag.color + ';color:' + tagTextColor(tag.color)}>${tag.name}</span>`;
+}
+export function UserTags({ uid }) {
+  const [list, setList] = useState([]);
+  useEffect(() => { if (uid) loadTags().then((d) => setList(d.map[uid] || [])); }, [uid]);
+  if (!list.length) return null;
+  return html`<span class="utags">${list.map((t) => html`<${TagChip} tag=${t} />`)}</span>`;
+}
