@@ -280,3 +280,10 @@ textarea.inp { resize: vertical; }
   .hero-badge { width: 124px; height: 124px; top: -52px; }
   .hero-lead { font-size: 17px; }
 }
+
+/* Şifre göster/gizle */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap .inp { padding-right: 76px; }
+.pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-weight: 600; font-size: 13px; color: inherit; cursor: pointer; }
+.pw-eye:hover { background: rgba(0,0,0,.06); }
+.inp { font-size: 16px; }

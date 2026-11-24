@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, staffEmail, errMsg, toast, Toaster, adminApi, PERMS,
   todayStr, fmtLong, fmtShort, fmtDateTime, hhmm, addMinutes, nextFridays, DAY_NAMES,
-  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar
+  INSTRUMENTS, KINDS, CLASS_YEARS, downloadCSV, InstructorScheduleEditor, notifyProva, notifyDinleti, waLink, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
 } from './lib.js';
 
 const parseRoute = () => (location.hash.replace(/^#\/?/, '') || '').split('/')[0] || '';
@@ -49,7 +49,10 @@ function Login({ denied }) {
   const submit = async (e) => {
     e.preventDefault();
     setErr(''); setBusy(true);
-    const { error } = await sb.auth.signInWithPassword({ email: staffEmail(u), password: pw });
+    const fd = new FormData(e.currentTarget);
+    const user = String(fd.get('username') || u).trim();
+    const pass = String(fd.get('password') || pw);
+    const { error } = await signIn(staffEmail(user), pass);
     setBusy(false);
     if (error) setErr(errMsg(error));
   };
@@ -58,8 +61,8 @@ function Login({ denied }) {
       <form class="login" onSubmit=${submit}>
         <div class="login-brand"><img src="/assets/logo.png" alt="" /><div><b>BÜMT</b><span>Yönetim paneli</span></div></div>
         ${denied ? html`<p class="form-err" role="alert">Bu hesabın yönetim yetkisi yok.</p>` : null}
-        <${Field} label="Kullanıcı adı"><input class="inp" autocomplete="username" required value=${u} onInput=${(e) => setU(e.target.value)} /><//>
-        <${Field} label="Şifre"><input class="inp" type="password" autocomplete="current-password" required value=${pw} onInput=${(e) => setPw(e.target.value)} /><//>
+        <${Field} label="Kullanıcı adı"><input class="inp" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required value=${u} onInput=${(e) => setU(e.target.value)} /><//>
+        <${Field} label="Şifre"><${PasswordInput} value=${pw} onInput=${(e) => setPw(e.target.value)} /><//>
         ${err ? html`<p class="form-err" role="alert">${err}</p>` : null}
         <button type="submit" class="btn btn-red btn-block" disabled=${busy}>${busy ? 'Giriş yapılıyor…' : 'Giriş yap'}</button>
         <p class="small muted">Yönetim rolü verilmiş üyeler öğrenci numarasıyla da girebilir.</p>

@@ -17,7 +17,7 @@ export async function initSupabase() {
 // ---- Hesaplar -------------------------------------------------------
 export const memberEmail = (no) => String(no || '').trim().replace(/\s+/g, '').toLowerCase() + '@uye.bumt.com.tr';
 export const staffEmail = (u) => {
-  const v = String(u || '').trim().toLowerCase();
+  const v = String(u || '').replace(/İ/g, 'i').replace(/\s+/g, '').toLowerCase().replace(/\u0307/g, '');
   if (v.includes('@')) return v;
   if (/^[0-9]+$/.test(v)) return memberEmail(v); // öğrenci numarasıyla yönetim girişi
   return v + '@yonetim.bumt.com.tr';
@@ -399,4 +399,25 @@ export async function uploadAvatar(file, folder) {
   if (error) throw error;
   const { data } = sb.storage.from('avatars').getPublicUrl(path);
   return data.publicUrl + '?v=' + Date.now();
+}
+
+
+// ---- Giriş yardımcıları (telefon klavyeleri ve otomatik doldurma için) ----
+export function PasswordInput({ value, onInput, autocomplete, name, required }) {
+  const [show, setShow] = useState(false);
+  return html`
+    <span class="pw-wrap">
+      <input class="inp" name=${name || 'password'} type=${show ? 'text' : 'password'} autocomplete=${autocomplete || 'current-password'}
+        autocapitalize="none" autocorrect="off" spellcheck="false" required=${required !== false} value=${value} onInput=${onInput} />
+      <button type="button" class="pw-eye" aria-label=${show ? 'Şifreyi gizle' : 'Şifreyi göster'} aria-pressed=${show} onClick=${() => setShow(!show)}>${show ? 'Gizle' : 'Göster'}</button>
+    </span>`;
+}
+
+// Formdaki gerçek değerleri okur (tarayıcının otomatik doldurduğu değerler dahil) ve giriş yapar.
+// Telefon klavyesinin eklediği baştaki/sondaki boşlukları da dener.
+export async function signIn(email, password) {
+  let r = await sb.auth.signInWithPassword({ email, password });
+  const t = password.replace(/^\s+|\s+$/g, '');
+  if (r.error && t !== password && t.length >= 6) r = await sb.auth.signInWithPassword({ email, password: t });
+  return r;
 }

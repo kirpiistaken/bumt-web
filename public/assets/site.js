@@ -3,7 +3,7 @@ import {
   html, render, useState, useEffect, useCallback,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
-  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar
+  DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn
 } from './lib.js';
 
 const parseRoute = () => {
@@ -647,7 +647,10 @@ function Giris({ me }) {
   const submit = async (e) => {
     e.preventDefault();
     setErr(''); setBusy(true);
-    const { error } = await sb.auth.signInWithPassword({ email: memberEmail(no), password: pw });
+    const fd = new FormData(e.currentTarget);
+    const num = String(fd.get('username') || no).replace(/\D/g, '');
+    const pass = String(fd.get('password') || pw);
+    const { error } = await signIn(memberEmail(num), pass);
     setBusy(false);
     if (error) return setErr(errMsg(error));
     toast('Hoş geldin!');
@@ -658,8 +661,8 @@ function Giris({ me }) {
       <form class="card pad-lg stack login-card" onSubmit=${submit}>
         <h1 class="h page-h">Giriş yap</h1>
         <p class="muted">Öğrenci numaran ve şifrenle giriş yap.</p>
-        <${Field} label="Öğrenci numarası"><input class="inp" inputmode="numeric" autocomplete="username" required value=${no} onInput=${(e) => setNo(e.target.value)} /><//>
-        <${Field} label="Şifre"><input class="inp" type="password" autocomplete="current-password" required value=${pw} onInput=${(e) => setPw(e.target.value)} /><//>
+        <${Field} label="Öğrenci numarası"><input class="inp" name="username" inputmode="numeric" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required value=${no} onInput=${(e) => setNo(e.target.value)} /><//>
+        <${Field} label="Şifre"><${PasswordInput} value=${pw} onInput=${(e) => setPw(e.target.value)} /><//>
         ${err ? html`<p class="form-err" role="alert">${err}</p>` : null}
         <button type="submit" class="btn btn-red" disabled=${busy}>${busy ? 'Giriş yapılıyor…' : 'Giriş yap'}</button>
         <p class="small">Hesabın yok mu? <a href="#/kayit">Üye ol</a></p>
