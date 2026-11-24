@@ -365,7 +365,7 @@ body { overflow-x: clip; }
 .evp-poster img { width: 100%; border-radius: 14px; box-shadow: 0 30px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.12); }
 .evp-gen { height: auto; aspect-ratio: 4 / 5; border-radius: 14px; border: 0; background: var(--red); color: #fff; }
 .evp-info { display: flex; flex-direction: column; gap: 18px; }
-.evp-title { margin: 0; font-size: clamp(40px, 6.5vw, 76px); line-height: .98; text-shadow: 0 4px 30px rgba(0,0,0,.4); }
+.evp-title { margin: 0; font-size: clamp(40px, 6.5vw, 76px); line-height: 1.12; text-shadow: 0 4px 30px rgba(0,0,0,.4); }
 .evp-facts { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .evp-date { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 14px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.22); backdrop-filter: blur(6px); }
 .evp-day { font-family: 'Oswald', sans-serif; font-size: 48px; font-weight: 700; line-height: 1; }
