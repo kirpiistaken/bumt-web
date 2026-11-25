@@ -998,7 +998,7 @@ function Kayit({ me }) {
     e.preventDefault();
     setErr('');
     const no = f.student_no.trim().replace(/\s+/g, '');
-    if (!/^[0-9]{4,20}$/.test(no)) return setErr('Öğrenci numarası sadece rakamlardan oluşmalı.');
+    if (!/^[0-9]{8}$/.test(no)) return setErr('Öğrenci numarası 8 haneli olmalı. Lütfen 8 haneli öğrenci numaranı yaz.');
     if (!f.faculty) return setErr('Fakülteni listeden seç.');
     if (f.password.length < 6) return setErr('Şifre en az 6 karakter olmalı.');
     if (f.password !== f.password2) return setErr('Şifreler aynı değil.');
@@ -1030,7 +1030,7 @@ function Kayit({ me }) {
       <form class="card pad-lg stack split-main" onSubmit=${submit}>
         <div class="fgrid">
           <${Field} label="Ad Soyad"><input class="inp" required autocomplete="name" value=${f.full_name} onInput=${set('full_name')} /><//>
-          <${Field} label="Öğrenci numarası" hint="Giriş yaparken bunu kullanacaksın"><input class="inp" required inputmode="numeric" value=${f.student_no} onInput=${set('student_no')} /><//>
+          <${Field} label="Öğrenci numarası" hint=${f.student_no && !/^[0-9]{8}$/.test(f.student_no.replace(/\s+/g, '')) ? '⚠️ Öğrenci numarası 8 haneli olmalı (' + f.student_no.replace(/\D/g, '').length + '/8)' : '8 haneli öğrenci numaran · Giriş yaparken bunu kullanacaksın'}><input class=${'inp' + (f.student_no && !/^[0-9]{8}$/.test(f.student_no.replace(/\s+/g, '')) ? ' inp-bad' : '')} required inputmode="numeric" pattern="[0-9]{8}" maxlength="8" title="8 haneli öğrenci numaranı yaz" placeholder="ör. 22012345" value=${f.student_no} onInput=${(e) => setF({ ...f, student_no: e.target.value.replace(/\D/g, '').slice(0, 8) })} /><//>
           <${Field} label="Telefon (WhatsApp)"><input class="inp" type="tel" required autocomplete="tel" value=${f.phone} onInput=${set('phone')} placeholder="05xx xxx xx xx" /><//>
           <${Field} label="E-posta" hint="Şifreni unutursan sıfırlama linki buraya gelir"><input class="inp" type="email" required autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
           <${Field} label="Fakülte"><${FacultySelect} required value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>

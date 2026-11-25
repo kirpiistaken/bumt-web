@@ -480,7 +480,7 @@ function MemberAdd({ onClose, onSaved }) {
     <${Modal} title="Yeni üye ekle" onClose=${onClose}>
       <form class="stack" onSubmit=${save}>
         <div class="fgrid">
-          <${Field} label="Öğrenci numarası"><input class="inp" required inputmode="numeric" value=${f.student_no} onInput=${(e) => setF({ ...f, student_no: e.target.value })} /><//>
+          <${Field} label="Öğrenci numarası" hint="8 haneli"><input class="inp" required inputmode="numeric" pattern="[0-9]{8}" maxlength="8" title="8 haneli öğrenci numarası" value=${f.student_no} onInput=${(e) => setF({ ...f, student_no: e.target.value.replace(/\D/g, '').slice(0, 8) })} /><//>
           <${Field} label="Geçici şifre" hint="Üyeye ilet; profilinden değiştirebilir"><input class="inp mono" required minlength="6" value=${f.password} onInput=${(e) => setF({ ...f, password: e.target.value })} /><//>
         </div>
         <${MemberForm} f=${f} setF=${setF} showPhone=${true} />

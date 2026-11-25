@@ -462,3 +462,4 @@ body { overflow-x: clip; }
 .guide-light .guide-h, .guide-light .guide-steps b { color: var(--ink); }
 .guide-light .guide-steps li { background: var(--paper); border-color: var(--line); }
 .guide-light::after { color: rgba(215,48,31,.15); }
+.inp-bad { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(215,48,31,.15); }

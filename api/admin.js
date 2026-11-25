@@ -51,7 +51,7 @@ module.exports = async (req, res) => {
   if (action === 'create_member') {
     if (!caller.can('uyeler')) return send(res, 403, { error: 'Üye ekleme yetkin yok.' });
     const no = cleanNo(body.student_no);
-    if (!/^[0-9A-Za-z]{4,20}$/.test(no)) return send(res, 400, { error: 'Öğrenci numarası geçersiz.' });
+    if (!/^[0-9]{8}$/.test(no)) return send(res, 400, { error: 'Öğrenci numarası 8 haneli olmalı.' });
     if (!body.password || String(body.password).length < 6) return send(res, 400, { error: 'Şifre en az 6 karakter olmalı.' });
     const r = await admin('/auth/v1/admin/users', {
       method: 'POST',
