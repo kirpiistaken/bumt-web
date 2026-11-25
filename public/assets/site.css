@@ -439,3 +439,6 @@ body { overflow-x: clip; }
 .wa-card-compact { margin: -32px 0 40px; }
 .wa-card-wait { background: var(--cream); border-color: var(--line2); color: var(--ink); box-shadow: none; }
 .wa-card-wait svg { color: var(--muted); }
+.wa-ico { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; background: #25D366; color: #fff; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(18,140,62,.35); }
+.wa-card .wa-ico svg { color: #fff; }
+.wa-card-wait .wa-ico { background: var(--line2); box-shadow: none; }
