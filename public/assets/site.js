@@ -131,7 +131,7 @@ function SchoolVerify({ studentNo, autoSend, onCheck }) {
         <h2 class="h verify-h">Okul mailinle hesabını onayla</h2>
         <p>Öğrenci numaranın sana ait olduğunu doğrulamak için okul mail adresine <b class="mono">${addr}</b> bir onay linki ${state === 'sent' ? 'gönderdik' : 'gönderiyoruz'}. Linke tıkladığın an hesabın onaylanır.</p>
         ${state === 'sending' ? html`<p class="verify-status">📨 Onay maili gönderiliyor…</p>` : null}
-        ${state === 'sent' ? html`<p class="verify-status verify-ok">✅ Onay maili gönderildi! Birkaç dakika içinde gelir.</p>` : null}
+        ${state === 'sent' ? html`<p class="verify-status verify-ok">✅ Onay maili gönderildi! Okulun spam filtresi yüzünden gelmesi <b>5–10 dakika</b> sürebilir, biraz sabret.</p>` : null}
         ${state === 'error' ? html`<p class="verify-status verify-err">⚠️ ${msg}</p>` : null}
       </div>
       <ol class="verify-steps">

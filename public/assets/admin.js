@@ -202,7 +202,8 @@ function Uyeler({ me }) {
   const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
-    const { data, error } = await sb.from('profiles').select(PROFILE_COLS + ', roles(name)').eq('is_staff', false).order('created_at', { ascending: false });
+    let { data, error } = await sb.from('profiles').select(PROFILE_COLS + ',school_verified_at, roles(name)').eq('is_staff', false).order('created_at', { ascending: false });
+    if (error && /school_verified_at/.test(error.message || '')) ({ data, error } = await sb.from('profiles').select(PROFILE_COLS + ', roles(name)').eq('is_staff', false).order('created_at', { ascending: false }));
     if (error) toast(errMsg(error), 'err');
     let rows = data || [];
     if (me.isSuper) {
@@ -265,7 +266,7 @@ function Uyeler({ me }) {
                 ${me.isSuper ? html`<td>${m.phone}</td>` : null}
                 <td>${m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici'}${(m.instruments || []).length ? html`<div class="sub">${m.instruments.join(', ')}</div>` : null}</td>
                 <td>${m.roles ? m.roles.name : html`<span class="muted">—</span>`}</td>
-                <td><span class=${'badge ' + STATUS[m.status][0]}>${STATUS[m.status][1]}</span></td>
+                <td><span class=${'badge ' + STATUS[m.status][0]}>${STATUS[m.status][1]}</span>${m.school_verified_at ? html`<div class="sub" title="Okul mailindeki linkle kendisi onayladı">✉️ Okul maili ile</div>` : m.status === 'bekliyor' ? html`<div class="sub">Okul maili bekleniyor</div>` : null}</td>
                 <td class="sub">${fmtDateTime(m.created_at)}</td>
                 <td class="actions">
                   ${m.status === 'bekliyor' ? html`
