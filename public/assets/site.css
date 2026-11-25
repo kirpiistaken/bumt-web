@@ -475,3 +475,6 @@ body { overflow-x: clip; }
 .hero-soon { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; font-size: 13.5px; color: rgba(244,234,213,.7); }
 .hero-soon span { padding: 2px 9px; border-radius: 999px; background: rgba(244,234,213,.12); color: var(--cream); font-weight: 700; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
 .hero-sub b { color: #fff; }
+.nav-soon { padding: 0 10px; }
+.nav-tag { margin-left: 5px; padding: 0 5px; font-size: 9px; }
+@media (max-width: 1180px) { .nav-tag { display: none; } }

@@ -24,7 +24,7 @@ function Pill({ on, onClick, children, label }) {
 // ---------------------------------------------------------------------
 // Üst menü
 // ---------------------------------------------------------------------
-const NAV = [['', 'Ana Sayfa'], ['pazar', 'Müzisyen Pazarı'], ['prova', 'Prova Odası'], ['kurslar', 'Enstrüman Kursları'], ['dinletiler', 'Dinletiler']];
+const NAV = [['', 'Ana Sayfa'], ['pazar', 'Müzisyen Pazarı'], ['prova', 'Prova Odası'], ['kurslar', 'Kurslar'], ['dinletiler', 'Dinletiler']];
 const SOON = { prova: 1, kurslar: 1, dinletiler: 1 };
 
 function Header({ me, route }) {
