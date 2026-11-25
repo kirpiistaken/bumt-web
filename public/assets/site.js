@@ -24,7 +24,8 @@ function Pill({ on, onClick, children, label }) {
 // ---------------------------------------------------------------------
 // Üst menü
 // ---------------------------------------------------------------------
-const NAV = [['', 'Ana Sayfa'], ['prova', 'Prova Odası'], ['kurslar', 'Enstrüman Kursları'], ['dinletiler', 'Dinletiler'], ['pazar', 'Müzisyen Pazarı']];
+const NAV = [['', 'Ana Sayfa'], ['pazar', 'Müzisyen Pazarı'], ['prova', 'Prova Odası'], ['kurslar', 'Enstrüman Kursları'], ['dinletiler', 'Dinletiler']];
+const SOON = { prova: 1, kurslar: 1, dinletiler: 1 };
 
 function Header({ me, route }) {
   const [open, setOpen] = useState(false);
@@ -39,7 +40,7 @@ function Header({ me, route }) {
           <span class="brand-txt"><b class="h">BÜMT</b><small>Başkent Üniversitesi Müzik Topluluğu</small></span>
         </a>
         <nav class="nav" aria-label="Ana menü">
-          ${NAV.map(([p, l]) => html`<a href=${'#/' + p} class=${'nav-a ' + (route.page === p ? 'nav-on' : '')}>${l}</a>`)}
+          ${NAV.map(([p, l]) => html`<a href=${'#/' + p} class=${'nav-a ' + (route.page === p ? 'nav-on ' : '') + (p === 'pazar' ? 'nav-hot ' : '') + (SOON[p] ? 'nav-soon' : '')}>${l}${SOON[p] ? html`<small class="nav-tag">yakında</small>` : null}</a>`)}
         </nav>
         <div class="hdr-right">
           ${me === undefined ? null : !me ? html`
@@ -72,7 +73,7 @@ const ICON = {
   dinletiler: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3M19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
   pazar: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8'
 };
-const BNAV = [['', 'Ana Sayfa', 'home'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler'], ['pazar', 'Pazar', 'pazar']];
+const BNAV = [['', 'Ana Sayfa', 'home'], ['pazar', 'Pazar', 'pazar'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler']];
 
 // Numarayı sitede göstermeden doğrudan WhatsApp'ı açar.
 // Pencere tıklama anında açılır (telefon tarayıcıları sonradan açılan pencereleri engeller), numara gelince WhatsApp'a yönlenir.
@@ -92,7 +93,7 @@ function BottomNav({ route }) {
   return html`
     <nav class="bnav" aria-label="Alt menü">
       ${BNAV.map(([p, l, ic]) => html`
-        <a href=${'#/' + p} class=${'bnav-a ' + (route.page === p ? 'bnav-on' : '')} aria-current=${route.page === p ? 'page' : null}>
+        <a href=${'#/' + p} class=${'bnav-a ' + (route.page === p ? 'bnav-on ' : '') + (SOON[p] ? 'bnav-soon' : '')} aria-current=${route.page === p ? 'page' : null}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${ICON[ic]} /></svg>
           <span>${l}</span>
         </a>`)}
@@ -159,11 +160,14 @@ function Home({ me }) {
       <span class="hero-kicker">Kampüsün müzik topluluğu</span>
       <h1 class="h hero-h">Sahne hepimizin.</h1>
       <p class="hero-lead">Başkent Üniversitesi Müzik Topluluğu'na hoş geldin! Burası çalan, söyleyen, dinleyen ve müziği seven herkesin buluşma noktası. İlk akorunu yeni öğreniyor olsan da yıllardır sahnede olsan da burada sana yer var.</p>
-      <p class="hero-sub">Üye ol, enstrüman derslerine göz at, müzisyen pazarında grup arkadaşını bul ve etkinliklerimizden ilk sen haberdar ol.</p>
+      <p class="hero-sub"><b>Müzisyen pazarı açıldı!</b> Grubuna davulcu mu arıyorsun, ya da çalacak bir grup mu? İlanını ver, kampüsteki müzisyenlerle tanış.</p>
       <div class="hero-cta">
-        ${me ? html`<a class="btn btn-red" href="#/kurslar">Enstrüman kursları</a>` : html`<a class="btn btn-red" href="#/kayit">Hemen üye ol</a>`}
-        <a class="btn btn-cream" href="#/prova">Prova odası</a>
+        <a class="btn btn-red btn-lg hero-pazar" href="#/pazar">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8" /></svg>
+          Müzisyen pazarı</a>
+        ${me ? null : html`<a class="btn btn-cream btn-lg" href="#/kayit">Hemen üye ol</a>`}
       </div>
+      <div class="hero-soon"><span>Yakında</span>Prova odası · Enstrüman kursları · Dinletiler</div>
     </section>
 
     <${WaGroupCard} me=${me} compact=${true} />

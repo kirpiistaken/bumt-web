@@ -463,3 +463,15 @@ body { overflow-x: clip; }
 .guide-light .guide-steps li { background: var(--paper); border-color: var(--line); }
 .guide-light::after { color: rgba(215,48,31,.15); }
 .inp-bad { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(215,48,31,.15); }
+
+/* Müzisyen pazarı öne çıksın, diğerleri "yakında" */
+.nav-soon { opacity: .6; }
+.nav-soon:hover { opacity: 1; }
+.nav-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; border: 1px solid rgba(244,234,213,.35); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.nav-on .nav-tag { border-color: rgba(255,255,255,.6); }
+.nav-hot:not(.nav-on) { box-shadow: inset 0 0 0 2px var(--red); }
+.bnav-soon:not(.bnav-on) { opacity: .55; }
+.hero-pazar { display: inline-flex; align-items: center; gap: 10px; }
+.hero-soon { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; font-size: 13.5px; color: rgba(244,234,213,.7); }
+.hero-soon span { padding: 2px 9px; border-radius: 999px; background: rgba(244,234,213,.12); color: var(--cream); font-weight: 700; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.hero-sub b { color: #fff; }
