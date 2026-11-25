@@ -95,6 +95,7 @@ function ChatWidget({ me, unread, onRead }) {
     setSending(true); setText('');
     const r = await sendMessage(active, b); setSending(false);
     if (r.error) { setText(b); return toast(r.error, 'err'); }
+    if (r.mail === 'no_key') toast('Not: e-posta servisi bu ortamda kapalı, bildirim gitmedi.', 'err');
     loadMsgs(active);
   };
 
@@ -183,6 +184,7 @@ function Mesajlar({ me, threadId, onRead }) {
     const r = await sendMessage(active, b);
     setSending(false);
     if (r.error) { setText(b); return toast(r.error, 'err'); }
+    if (r.mail === 'no_key') toast('Not: e-posta servisi bu ortamda kapalı, bildirim gitmedi.', 'err');
     loadMsgs(active);
   };
 
@@ -190,6 +192,7 @@ function Mesajlar({ me, threadId, onRead }) {
     <div class=${'msgs' + (active ? ' msgs-open' : '')}>
       <aside class="msg-list">
         <h1 class="h2 msg-list-h">Mesajlar</h1>
+        <${NotifyToggle} me=${me} compact=${true} />
         ${threads === null ? html`<${Loading} />` : threads.length === 0 ? html`<p class="muted pad">Henüz mesajın yok. Bir ilandaki "Mesaj gönder" ile konuşma başlatabilirsin.</p>` : html`
           <div class="msg-threads">
             ${threads.map((t) => html`
@@ -406,6 +409,32 @@ function gateMessage(g) {
 // Ana sayfa
 // ---------------------------------------------------------------------
 const WA_ICON = 'M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z';
+// E-posta bildirimi aç/kapa — dokununca anında kaydedilir (Kaydet gerekmez)
+function NotifyToggle({ me, compact }) {
+  const p = me && me.profile;
+  const [on, setOn] = useState(p ? p.notify_dm !== false : true);
+  const [busy, setBusy] = useState(false);
+  if (!p || !('notify_dm' in p)) return null;
+  const flip = async () => {
+    const v = !on; setOn(v); setBusy(true);
+    const { error } = await sb.from('profiles').update({ notify_dm: v }).eq('id', p.id);
+    setBusy(false);
+    if (error) { setOn(!v); return toast('Kaydedilemedi: ' + error.message, 'err'); }
+    p.notify_dm = v;
+    toast(v ? 'Yeni mesajlarda e-posta alacaksın.' : 'Mesaj e-postaları kapatıldı.');
+  };
+  const sw = html`<button type="button" role="switch" aria-checked=${on} disabled=${busy} class=${'sw' + (on ? ' sw-on' : '')} onClick=${flip}><span></span></button>`;
+  if (compact) return html`<div class="notify-mini">${sw}<span>E-posta bildirimi ${on ? 'açık' : 'kapalı'}</span></div>`;
+  return html`
+    <div class="card pad notify-card">
+      <div class="stack-xs">
+        <b>🔔 Mesaj bildirimleri</b>
+        <span class="muted small">Biri sana site üzerinden mesaj yazınca ${p.contact_email ? html`<b>${p.contact_email}</b>` : 'e-posta adresine'} haber verelim.${!p.contact_email ? ' (Önce aşağıdan bir e-posta adresi ekle.)' : ''}</span>
+      </div>
+      ${sw}
+    </div>`;
+}
+
 function WaGroupCard({ me, compact }) {
   const [link, setLink] = useState(null);
   const approved = me && me.profile && me.profile.status === 'onaylandi';
@@ -1350,7 +1379,7 @@ function Profil({ me, refresh }) {
     if (me === null) go('/giris');
     if (!me || !me.profile) return;
     const p = me.profile;
-    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, ...(HAS_FACULTY ? { faculty: p.faculty || '' } : {}), department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '', notify_dm: p.notify_dm !== false });
+    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, ...(HAS_FACULTY ? { faculty: p.faculty || '' } : {}), department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '' });
     loadMine();
   }, [me && me.user.id]);
 
@@ -1432,6 +1461,7 @@ function Profil({ me, refresh }) {
       </div>
 
       <${WaGroupCard} me=${me} />
+      <${NotifyToggle} me=${me} />
       ${p.status === 'bekliyor' && !p.is_staff ? html`<${SchoolVerify} studentNo=${p.student_no} onCheck=${refresh} />` : null}
 
       <div class="card pad row photo-card">
@@ -1470,7 +1500,6 @@ function Profil({ me, refresh }) {
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
         </div>
         <${Field} label="Hakkımda" hint="Kısa bir tanıtım: ne çalıyorsun, hangi tarzları seviyorsun, neler yapmak istiyorsun…"><textarea class="inp" rows="3" maxlength="500" value=${f.bio} onInput=${set('bio')}></textarea><//>
-        ${'notify_dm' in f ? html`<label class="check"><input type="checkbox" checked=${f.notify_dm} onChange=${(e) => setF({ ...f, notify_dm: e.target.checked })} /> Biri bana site üzerinden mesaj gönderince e-posta ile haber ver</label>` : null}
         <fieldset class="fs"><legend>Toplulukta</legend>
           <div class="row">
             <${Pill} on=${f.member_type === 'dinleyici'} onClick=${() => setF({ ...f, member_type: 'dinleyici' })}>Dinleyici<//>

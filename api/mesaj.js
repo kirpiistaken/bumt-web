@@ -27,30 +27,37 @@ module.exports = async (req, res) => {
   if (!mp || mp.status !== 'onaylandi') return json(res, 403, { error: 'Mesaj göndermek için üyeliğin onaylı olmalı.' });
   const other = caller.id === t.u_lo ? t.u_hi : t.u_lo;
 
-  // "Okununca tekrar bildir" mantığı: bu threadde benden gelen okunmamış mesaj yoksa bildir
-  const unreadFromMe = await sb('/rest/v1/dm_messages?select=id&thread_id=eq.' + thread_id + '&sender_id=eq.' + caller.id + '&read_at=is.null&limit=1');
-  const firstUnread = unreadFromMe.ok && Array.isArray(unreadFromMe.data) && unreadFromMe.data.length === 0;
+  // Bildirim kısıtı: bu threadde benden okunmamış mesaj yoksa VEYA son okunmamışım 10 dk'dan eskiyse bildir
+  const lastUnread = await sb('/rest/v1/dm_messages?select=created_at&thread_id=eq.' + thread_id + '&sender_id=eq.' + caller.id + '&read_at=is.null&order=created_at.desc&limit=1');
+  const lu = lastUnread.ok && Array.isArray(lastUnread.data) ? lastUnread.data[0] : null;
+  const shouldNotify = !lu || (Date.now() - new Date(lu.created_at).getTime()) > 10 * 60 * 1000;
 
   const ins = await sb('/rest/v1/dm_messages', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ thread_id, sender_id: caller.id, body: text.slice(0, 2000) }) });
   if (!ins.ok) return json(res, 500, { error: 'Mesaj gönderilemedi.' });
   const created = Array.isArray(ins.data) ? ins.data[0] : null;
   await sb('/rest/v1/dm_threads?id=eq.' + thread_id, { method: 'PATCH', body: JSON.stringify({ last_message_at: new Date().toISOString() }) });
 
-  if (firstUnread) {
+  let mail = 'throttled';
+  if (shouldNotify) {
     const op = await sb('/rest/v1/profiles?select=full_name,contact_email,notify_dm&id=eq.' + other);
     const o = op.ok && Array.isArray(op.data) ? op.data[0] : null;
-    if (o && o.contact_email && o.notify_dm !== false) {
+    if (!o || !o.contact_email) mail = 'no_email';
+    else if (o.notify_dm === false) mail = 'off';
+    else if (!process.env.RESEND_API_KEY) mail = 'no_key';
+    else {
       const link = siteUrl(req) + '/#/mesajlar/' + thread_id;
-      await sendMail({
+      const r = await sendMail({
         to: o.contact_email,
         subject: 'BÜMT: ' + (mp.full_name ? mp.full_name.split(' ')[0] : 'Bir üye') + ' sana mesaj gönderdi',
         html: mailLayout('Yeni mesajın var 💬', `
           <p style="margin:0 0 12px">Merhaba ${esc(o.full_name || '')}, BÜMT sitesinde sana yeni bir mesaj geldi${t.context_title ? ' (<b>' + esc(t.context_title) + '</b>)' : ''}.</p>
           <p style="margin:0 0 16px">Okumak ve cevaplamak için:</p>
           <div style="margin:0 0 16px">${btn(link, 'Mesajı aç', '#D7301F')}</div>
-          <p style="margin:0;color:#5E5648;font-size:13px">Bu bildirimleri istemiyorsan Profilim sayfasından kapatabilirsin.</p>`)
+          <p style="margin:0;color:#5E5648;font-size:13px">Bu bildirimleri istemiyorsan Profilim sayfasındaki "Mesaj bildirimleri" anahtarından kapatabilirsin.</p>`)
       });
+      mail = r && r.ok ? 'sent' : 'error';
     }
   }
-  return json(res, 200, { ok: true, created_at: created && created.created_at });
+  console.log('mesaj bildirim', thread_id, mail);
+  return json(res, 200, { ok: true, created_at: created && created.created_at, mail });
 };
