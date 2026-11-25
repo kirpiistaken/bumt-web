@@ -5,7 +5,9 @@ const MAIL_FROM = process.env.MAIL_FROM || 'BÜMT <bildirim@bumt.com.tr>';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const waLink = (phone, text) => {
   let d = String(phone || '').replace(/\D/g, '');
-  if (d.startsWith('0')) d = '9' + d; else if (d.length === 10 && d.startsWith('5')) d = '90' + d;
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.length === 10 && d.startsWith('5')) d = '90' + d;
   return d ? 'https://wa.me/' + d + (text ? '?text=' + encodeURIComponent(text) : '') : '';
 };
 const siteUrl = (req) => (process.env.SITE_URL || ('https://' + (req.headers['x-forwarded-host'] || req.headers.host))).replace(/\/$/, '');

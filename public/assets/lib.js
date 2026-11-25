@@ -200,8 +200,9 @@ export const GRID_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
 export function waLink(phone, text) {
   let d = String(phone || '').replace(/\D/g, '');
-  if (d.startsWith('0')) d = '9' + d;
-  else if (d.length === 10 && d.startsWith('5')) d = '90' + d;
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.length === 10 && d.startsWith('5')) d = '90' + d;
   return 'https://wa.me/' + d + (text ? '?text=' + encodeURIComponent(text) : '');
 }
 

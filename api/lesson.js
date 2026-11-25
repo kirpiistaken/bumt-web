@@ -8,7 +8,9 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const slot = (b) => 'Her ' + DAYS[b.weekday] + ' ' + String(b.hour).padStart(2, '0') + ':00–' + String(b.hour + 1).padStart(2, '0') + ':00';
 const waLink = (phone) => {
   let d = String(phone || '').replace(/\D/g, '');
-  if (d.startsWith('0')) d = '9' + d; else if (d.length === 10 && d.startsWith('5')) d = '90' + d;
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.length === 10 && d.startsWith('5')) d = '90' + d;
   return d ? 'https://wa.me/' + d : '';
 };
 const siteUrl = (req) => (process.env.SITE_URL || ('https://' + (req.headers['x-forwarded-host'] || req.headers.host))).replace(/\/$/, '');
