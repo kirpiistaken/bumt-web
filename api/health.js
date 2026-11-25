@@ -38,6 +38,7 @@ module.exports = async (req, res) => {
     out.sql_019_whatsapp_grubu = await chk('/rest/v1/settings?select=whatsapp_group&limit=1');
     out.sql_021_okul_maili = await chk('/rest/v1/school_verifications?select=id&limit=1');
     out.sql_022_enstruman_pazari = await chk('/rest/v1/equipment_posts?select=id&limit=1');
+    out.sql_025_mesajlasma = await chk('/rest/v1/dm_threads?select=id&limit=1');
     out.ai_denetim = process.env.ANTHROPIC_API_KEY ? 'açık' : 'kapalı (ANTHROPIC_API_KEY yok — sadece kelime listesi)';
     out.sql_016_egitmen_hesaptan = '(SQL Editor\'de çalıştırıldıysa tamam — buradan kontrol edilemiyor)';
     const a = await sb('/auth/v1/admin/users?per_page=1');

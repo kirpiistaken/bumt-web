@@ -1,6 +1,6 @@
 // BÜMT — herkese açık site
 import {
-  html, render, useState, useEffect, useCallback,
+  html, render, useState, useEffect, useCallback, useRef,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
   DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS, UserTags, mapsHref, HAS_FACULTY, SchoolLine, FacultySelect, INSTRUCTOR_COLS
@@ -11,6 +11,134 @@ const parseRoute = () => {
   return { page: parts[0] || '', param: parts[1] || '' };
 };
 const go = (path) => { location.hash = path; };
+
+const MSG_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z';
+async function startChat(other, ctype, cid, title) {
+  if (!other) return toast('Bu kişiyle site üzerinden mesajlaşma şu an yapılamıyor.', 'err');
+  const { data, error } = await sb.rpc('dm_start', { p_other: other, p_ctype: ctype || 'direct', p_cid: cid || null, p_title: title || '' });
+  if (error) return toast(errMsg(error), 'err');
+  go('/mesajlar/' + data);
+}
+function waForCtx(ctx) {
+  if (ctx.kind === 'market') return openWhatsApp('market_contact', { p_post: ctx.id }, 'Merhaba, BÜMT Müzisyen Pazarı\'ndaki "' + ctx.title + '" ilanın için yazıyorum.', 'Bu üye telefon numarası eklememiş.');
+  if (ctx.kind === 'equipment') return openWhatsApp('equipment_contact', { p_post: ctx.id }, 'Merhaba, BÜMT Enstrüman Pazarı\'ndaki "' + ctx.title + '" ilanın hâlâ duruyor mu?', 'Bu üye telefon numarası eklememiş.');
+  return openWhatsApp('instructor_contact', { p_instructor: ctx.id }, 'Merhaba, BÜMT sitesinden ' + ctx.title + ' için yazıyorum.', 'Eğitmen henüz telefon eklememiş.');
+}
+function ContactButtons({ me, approved, pref, ctx, size }) {
+  const sm = size === 'sm' ? ' btn-sm' : '';
+  if (!me) return html`<a class=${'btn btn-ghost' + sm} href="#/giris">İletişim için giriş yap</a>`;
+  if (!approved) return html`<span class="muted small">İletişim üyeliğin onaylanınca görünür.</span>`;
+  const canChat = !!ctx.otherId;
+  const pr = pref || 'whatsapp';
+  const showWa = pr !== 'chat' || !canChat;
+  const showChat = pr !== 'whatsapp' && canChat;
+  return html`
+    ${showWa ? html`<button type="button" class=${'btn btn-wa' + sm} onClick=${() => waForCtx(ctx)}>WhatsApp'tan yaz</button>` : null}
+    ${showChat ? html`<button type="button" class=${'btn btn-dark' + sm} onClick=${() => startChat(ctx.otherId, ctx.kind, ctx.id, ctx.title)}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d=${MSG_ICON}/></svg> Mesaj gönder</button>` : null}`;
+}
+function ContactPrefField({ value, onChange }) {
+  const opts = [['whatsapp', 'WhatsApp numaram'], ['chat', 'Site üzerinden mesaj'], ['both', 'İkisi de olsun']];
+  return html`
+    <div class="stack-xs">
+      <span class="fld"><span>İletişim yöntemi</span></span>
+      <div class="row chips">${opts.map(([v, l]) => html`<${Pill} on=${(value || 'whatsapp') === v} onClick=${() => onChange(v)}>${l}<//>`)}</div>
+      <span class="muted small">"WhatsApp numaram"da numaran yine gizli kalır, sadece WhatsApp butonu çıkar. "Site üzerinden mesaj"da numaran hiç paylaşılmaz; ilgilenenler seninle site içindeki mesajlaşmadan konuşur.</span>
+    </div>`;
+}
+
+const msgTime = (ts) => {
+  const d = new Date(ts); const now = new Date();
+  const hm = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return hm;
+  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) + ' ' + hm;
+};
+
+function Mesajlar({ me, threadId, onRead }) {
+  const [threads, setThreads] = useState(null);
+  const [active, setActive] = useState(threadId || null);
+  const [msgs, setMsgs] = useState([]);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const uid = me && me.user.id;
+  const endRef = useRef(null);
+
+  const loadThreads = useCallback(async () => {
+    const { data } = await sb.rpc('my_threads');
+    setThreads(data || []);
+  }, []);
+  const loadMsgs = useCallback(async (tid) => {
+    if (!tid) return;
+    const { data } = await sb.from('dm_messages').select('id,sender_id,body,created_at').eq('thread_id', tid).order('created_at');
+    setMsgs(data || []);
+    await sb.rpc('dm_mark_read', { p_thread: tid });
+    onRead && onRead();
+    loadThreads();
+  }, [loadThreads, onRead]);
+
+  useEffect(() => { if (me) loadThreads(); }, [me, loadThreads]);
+  useEffect(() => { setActive(threadId || null); }, [threadId]);
+  useEffect(() => { if (active) loadMsgs(active); else setMsgs([]); }, [active]);
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => loadMsgs(active), 5000);
+    return () => clearInterval(t);
+  }, [active, loadMsgs]);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView(); }, [msgs.length]);
+
+  if (me === undefined) return html`<${Loading} />`;
+  if (!me) return html`<div class="stack"><h1 class="h page-h">Mesajlar</h1><p class="muted">Mesajlarını görmek için giriş yap.</p><a class="btn btn-red self-start" href="#/giris">Giriş yap</a></div>`;
+  if (me.profile.status !== 'onaylandi') return html`<div class="stack"><h1 class="h page-h">Mesajlar</h1><p class="muted">Mesajlaşma, üyeliğin onaylandıktan sonra açılır.</p><a class="btn btn-red self-start" href="#/onay">Hesabımı onayla</a></div>`;
+
+  const cur = (threads || []).find((t) => t.thread_id === active);
+  const send = async (e) => {
+    e.preventDefault();
+    const b = text.trim();
+    if (!b || !active) return;
+    setSending(true); setText('');
+    const { error } = await sb.rpc('dm_send', { p_thread: active, p_body: b });
+    setSending(false);
+    if (error) { setText(b); return toast(errMsg(error), 'err'); }
+    loadMsgs(active);
+  };
+
+  return html`
+    <div class=${'msgs' + (active ? ' msgs-open' : '')}>
+      <aside class="msg-list">
+        <h1 class="h2 msg-list-h">Mesajlar</h1>
+        ${threads === null ? html`<${Loading} />` : threads.length === 0 ? html`<p class="muted pad">Henüz mesajın yok. Bir ilandaki "Mesaj gönder" ile konuşma başlatabilirsin.</p>` : html`
+          <div class="msg-threads">
+            ${threads.map((t) => html`
+              <button type="button" class=${'msg-thread' + (t.thread_id === active ? ' on' : '')} onClick=${() => { setActive(t.thread_id); location.hash = '#/mesajlar/' + t.thread_id; }}>
+                <${Avatar} url=${t.other_avatar} name=${t.other_name} size=${44} />
+                <span class="msg-thread-txt">
+                  <span class="msg-thread-top"><b>${t.other_name}</b><span class="msg-thread-time">${msgTime(t.last_message_at)}</span></span>
+                  ${t.context_title ? html`<span class="msg-ctx">${t.context_title}</span>` : null}
+                  <span class="msg-thread-last">${t.last_sender === uid ? 'Sen: ' : ''}${t.last_body || '—'}</span>
+                </span>
+                ${t.unread ? html`<span class="msg-badge">${t.unread}</span>` : null}
+              </button>`)}
+          </div>`}
+      </aside>
+      <section class="msg-pane">
+        ${!active ? html`<div class="msg-empty"><p class="muted">Soldan bir konuşma seç.</p></div>` : html`
+          <div class="msg-head">
+            <button type="button" class="msg-back" aria-label="Geri" onClick=${() => { setActive(null); location.hash = '#/mesajlar'; }}>‹</button>
+            ${cur ? html`<${Avatar} url=${cur.other_avatar} name=${cur.other_name} size=${36} /><div class="stack-0"><b>${cur.other_name}</b>${cur.context_title ? html`<span class="muted small">${cur.context_title}</span>` : null}</div>` : null}
+          </div>
+          <div class="msg-body">
+            ${msgs.map((m) => html`<div class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
+            <div ref=${endRef}></div>
+          </div>
+          <form class="msg-input" onSubmit=${send}>
+            <input class="inp" placeholder="Mesaj yaz…" value=${text} onInput=${(e) => setText(e.target.value)} maxlength="2000" />
+            <button type="submit" class="btn btn-red" disabled=${sending || !text.trim()}>Gönder</button>
+          </form>`}
+      </section>
+    </div>`;
+}
+
+
 
 const Field = ({ label, hint, children }) => html`
   <label class="lbl"><span>${label}</span>${children}${hint ? html`<small class="muted">${hint}</small>` : null}</label>`;
@@ -27,7 +155,7 @@ function Pill({ on, onClick, children, label }) {
 const NAV = [['', 'Ana Sayfa'], ['pazar', 'Müzisyen Pazarı'], ['ekipman', 'Enstrüman Pazarı'], ['prova', 'Prova Odası'], ['kurslar', 'Kurslar'], ['dinletiler', 'Dinletiler']];
 const SOON = { prova: 1, kurslar: 1, dinletiler: 1 };
 
-function Header({ me, route }) {
+function Header({ me, route, unread }) {
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [route.page]);
   const name = me && me.profile ? (me.profile.full_name || me.profile.student_no || 'Hesabım') : '';
@@ -43,6 +171,7 @@ function Header({ me, route }) {
           ${NAV.map(([p, l]) => html`<a href=${'#/' + p} class=${'nav-a ' + (route.page === p ? 'nav-on ' : '') + (p === 'pazar' ? 'nav-hot ' : '') + (SOON[p] ? 'nav-soon' : '')}>${l}${SOON[p] ? html`<small class="nav-tag">yakında</small>` : null}</a>`)}
         </nav>
         <div class="hdr-right">
+          ${me && me.profile && !me.profile.is_staff ? html`<a class="msg-btn" href="#/mesajlar" aria-label="Mesajlar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d=${MSG_ICON}/></svg>${unread ? html`<span class="msg-dot">${unread > 9 ? '9+' : unread}</span>` : null}</a>` : null}
           ${me === undefined ? null : !me ? html`
             <a class="btn btn-red btn-sm" href="#/giris">Giriş</a>
           ` : html`
@@ -55,6 +184,7 @@ function Header({ me, route }) {
               ${open ? html`
                 <div class="menu-pop">
                   <a href="#/profil">Profilim ve rezervasyonlarım</a>
+                  <a href="#/mesajlar">Mesajlarım${unread ? ' (' + unread + ')' : ''}</a>
                   ${me.instructor ? html`<a href="#/egitmen">Eğitmen paneli</a>` : null}
                   ${me.isAdmin ? html`<a href="/yonetim/">Yönetim paneli</a>` : null}
                   <button type="button" onClick=${logout}>Çıkış yap</button>
@@ -640,7 +770,7 @@ function Kurslar({ me }) {
 
   const load = useCallback(async () => {
     const [{ data: ins }, { data: slots }, { data: bookings }] = await Promise.all([
-      sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id,avatar_url' + (HAS_FACULTY ? ',faculty' : '')).eq('active', true).order('instrument').order('full_name'),
+      sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id,avatar_url,contact_pref' + (HAS_FACULTY ? ',faculty' : '')).eq('active', true).order('instrument').order('full_name'),
       sb.from('instructor_slots').select('instructor_id,weekday,hour'),
       sb.from('lesson_bookings').select('id,instructor_id,weekday,hour,user_id,display_name,status').neq('status', 'reddedildi')
     ]);
@@ -663,12 +793,7 @@ function Kurslar({ me }) {
   const open = (id) => { setSelId(id); setPicked(null); setTimeout(() => { const el = document.getElementById('takvim'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
 
   const waText = (t) => 'Merhaba ' + t.full_name + ', BÜMT sitesinden ' + t.instrument + ' dersi için yazıyorum.';
-  const Contact = ({ t, small }) => {
-    const cls = 'btn ' + (small ? 'btn-sm ' : '');
-    if (!me) return html`<a class=${cls + 'btn-ghost'} href="#/giris">İletişim için giriş yap</a>`;
-    if (!approvedMember) return html`<span class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</span>`;
-    return html`<button type="button" class=${cls + 'btn-wa'} onClick=${() => openWhatsApp('instructor_contact', { p_instructor: t.id }, waText(t), 'Eğitmen henüz telefon eklememiş.')}>WhatsApp'tan yaz</button>`;
-  };
+  const Contact = ({ t, small }) => html`<${ContactButtons} me=${me} approved=${approvedMember} pref=${t.contact_pref} size=${small ? 'sm' : ''} ctx=${{ kind: 'instructor', title: t.instrument + ' dersi', otherId: t.profile_id, id: t.id }} />`;
 
   let grid = null;
   if (sel) {
@@ -1292,7 +1417,7 @@ function Egitmen({ me, refresh }) {
   const [f, setF] = useState(null);
   useEffect(() => {
     if (me === null) go('/giris');
-    if (me && me.instructor) setF({ phone: me.instructor.phone, email: me.instructor.email || '', bio: me.instructor.bio });
+    if (me && me.instructor) setF({ phone: me.instructor.phone, email: me.instructor.email || '', bio: me.instructor.bio, contact_pref: me.instructor.contact_pref || 'whatsapp' });
   }, [me && me.user.id, me && me.instructor && me.instructor.id]);
   if (me === undefined) return html`<${Loading} />`;
   if (!me || !me.instructor) return html`<div class="locked"><h1 class="h2">Eğitmen paneli</h1><p class="muted">Bu sayfa eğitmen olarak eklenmiş üyeler içindir. Eğitmen olmak istiyorsan yönetim kuruluna yaz.</p></div>`;
@@ -1305,7 +1430,7 @@ function Egitmen({ me, refresh }) {
   };
   const save = async (e) => {
     e.preventDefault();
-    const { error } = await sb.from('instructors').update({ phone: f.phone, email: f.email.trim(), bio: f.bio }).eq('id', ins.id);
+    const { error } = await sb.from('instructors').update({ phone: f.phone, email: f.email.trim(), bio: f.bio, contact_pref: f.contact_pref || 'whatsapp' }).eq('id', ins.id);
     if (error) return toast(errMsg(error), 'err');
     toast('Bilgilerin güncellendi.');
     refresh();
@@ -1331,6 +1456,7 @@ function Egitmen({ me, refresh }) {
           <${Field} label="Talep bildirimleri için e-postan" hint="Yeni ders talepleri bu adrese gelir"><input class="inp" type="email" value=${f.email} onInput=${(e) => setF({ ...f, email: e.target.value })} /><//>
           <${Field} label="WhatsApp numaran" hint="Sadece giriş yapmış üyeler görür"><input class="inp" type="tel" value=${f.phone} onInput=${(e) => setF({ ...f, phone: e.target.value })} /><//>
           <${Field} label="Kısa tanıtım"><textarea class="inp" rows="3" maxlength="300" value=${f.bio} onInput=${(e) => setF({ ...f, bio: e.target.value })} placeholder="Örn. 8 yıldır keman çalıyorum, başlangıç seviyesine ders veriyorum."></textarea><//>
+          <${ContactPrefField} value=${f.contact_pref} onChange=${(v) => setF({ ...f, contact_pref: v })} />
           <button type="submit" class="btn btn-dark self-start">Kaydet</button>
         </form>` : null}
     </div>`;
@@ -1469,7 +1595,7 @@ function Pazar({ me }) {
 
   const load = useCallback(async () => {
     let { data, error } = await sb.from('market_posts').select(MARKET_COLS + ',review,review_reason').eq('active', true).order('created_at', { ascending: false });
-    if (error && /review/.test(error.message || '')) ({ data, error } = await sb.from('market_posts').select(MARKET_COLS).eq('active', true).order('created_at', { ascending: false }));
+    if (error) ({ data, error } = await sb.from('market_posts').select('id,user_id,kind,title,my_role,looking_for,genre,description,display_name,avatar_url,active,created_at').eq('active', true).order('created_at', { ascending: false }));
     if (error) toast(errMsg(error), 'err');
     setPosts(data || []);
     // Kontrolü yarım kalmış kendi ilanların varsa tekrar kontrol ettir
@@ -1485,13 +1611,13 @@ function Pazar({ me }) {
     if (!me) return go('/giris');
     if (!approved) return toast('İlan vermek için üyeliğinin onaylanması gerekiyor.', 'err');
     if (!isMusician) return toast('İlanı müzisyen üyeler verebilir. Profilinden "Müzisyen" seçebilirsin.', 'err');
-    setForm({ kind: POST_KINDS[0], title: '', my_role: (me.profile.instruments || []).join(', '), looking_for: [], genre: '', description: '' });
+    setForm({ kind: POST_KINDS[0], title: '', my_role: (me.profile.instruments || []).join(', '), looking_for: [], genre: '', description: '', contact_pref: 'whatsapp' });
     setTimeout(() => { const el = document.getElementById('ilan-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
   };
   const save = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return toast('İlana bir başlık yaz.', 'err');
-    const row = { kind: form.kind, title: form.title.trim(), my_role: form.my_role.trim(), looking_for: form.looking_for, genre: form.genre.trim(), description: form.description.trim() };
+    const row = { kind: form.kind, title: form.title.trim(), my_role: form.my_role.trim(), looking_for: form.looking_for, genre: form.genre.trim(), description: form.description.trim(), contact_pref: form.contact_pref || 'whatsapp' };
     const { data, error } = form.id ? await sb.from('market_posts').update(row).eq('id', form.id).select('id').single() : await sb.from('market_posts').insert(row).select('id').single();
     if (error) return toast(errMsg(error), 'err');
     setForm(null);
@@ -1559,6 +1685,7 @@ function Pazar({ me }) {
             <div class="row">${INSTRUMENTS.map((r) => html`<${Pill} on=${form.looking_for.includes(r)} onClick=${() => toggleRole(r)}>${r}<//>`)}</div>
           </fieldset>
           <${Field} label="Açıklama"><textarea class="inp" rows="4" maxlength="1000" value=${form.description} onInput=${(e) => setForm({ ...form, description: e.target.value })} placeholder="Ne tür müzik yapmak istiyorsun, ne sıklıkla prova, hedefin ne (konser, eğlence, kayıt)…"></textarea><//>
+          <${ContactPrefField} value=${form.contact_pref} onChange=${(v) => setForm({ ...form, contact_pref: v })} />
           <div class="row">
             <button type="submit" class="btn btn-red">${form.id ? 'Kaydet' : 'İlanı yayınla'}</button>
             <button type="button" class="btn btn-ghost" onClick=${() => setForm(null)}>Vazgeç</button>
@@ -1595,9 +1722,7 @@ function Pazar({ me }) {
                   ${mine ? html`
                     <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setForm({ ...p })}>Düzenle</button>
                     <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>İlanı kapat</button>`
-                  : !me ? html`<a class="btn btn-sm btn-ghost" href="#/giris">İletişim için giriş yap</a>`
-                  : !approved ? html`<span class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</span>`
-                  : html`<button type="button" class="btn btn-sm btn-wa" onClick=${() => openWhatsApp('market_contact', { p_post: p.id }, 'Merhaba, BÜMT Müzisyen Pazarı\'ndaki "' + p.title + '" ilanın için yazıyorum.', 'Bu üye telefon numarası eklememiş.')}>WhatsApp'tan yaz</button>`}
+                  : html`<${ContactButtons} me=${me} approved=${approved} pref=${p.contact_pref} size="sm" ctx=${{ kind: 'market', title: p.title, otherId: p.user_id, id: p.id }} />`}
                   ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
                 </div>
               </article>`;
@@ -1606,7 +1731,7 @@ function Pazar({ me }) {
     </div>`;
 }
 
-const MARKET_COLS = 'id,user_id,kind,title,my_role,looking_for,genre,description,display_name,avatar_url,active,created_at';
+const MARKET_COLS = 'id,user_id,kind,title,my_role,looking_for,genre,description,display_name,avatar_url,active,created_at,contact_pref';
 async function checkPost(id, isNew) {
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -1620,7 +1745,7 @@ async function checkPost(id, isNew) {
 // ---------------------------------------------------------------------
 const EQ_CATS = ['Gitar', 'Bas Gitar', 'Davul & Perküsyon', 'Klavye & Piyano', 'Yaylı', 'Nefesli', 'Amfi & Efekt', 'Mikrofon & Ses', 'Aksesuar', 'Diğer'];
 const EQ_CONDS = [['sifir', 'Sıfır'], ['az_kullanilmis', 'Az kullanılmış'], ['ikinci_el', 'İkinci el']];
-const EQ_COLS = 'id,user_id,category,title,price,is_negotiable,condition,description,photos,sold,active,created_at,display_name,avatar_url';
+const EQ_COLS = 'id,user_id,category,title,price,is_negotiable,condition,description,photos,sold,active,created_at,display_name,avatar_url,contact_pref';
 const condLabel = (c) => (EQ_CONDS.find((x) => x[0] === c) || [, 'İkinci el'])[1];
 const priceLabel = (p) => p.price == null ? 'Fiyat yok' : Number(p.price).toLocaleString('tr-TR') + ' TL';
 
@@ -1654,7 +1779,8 @@ function Ekipman({ me }) {
   const canModerate = me && me.can && me.can('uyeler');
 
   const load = useCallback(async () => {
-    const { data, error } = await sb.from('equipment_posts').select(EQ_COLS + ',review,review_reason').eq('active', true).order('created_at', { ascending: false });
+    let { data, error } = await sb.from('equipment_posts').select(EQ_COLS + ',review,review_reason').eq('active', true).order('created_at', { ascending: false });
+    if (error) ({ data, error } = await sb.from('equipment_posts').select('id,user_id,category,title,price,is_negotiable,condition,description,photos,sold,active,created_at,display_name,avatar_url').eq('active', true).order('created_at', { ascending: false }));
     if (error) toast(errMsg(error), 'err');
     setPosts(data || []);
     (data || []).filter((p) => p.review === 'kontrol' && p.user_id === uid).forEach((p) => checkEquip(p.id, false).then(() => setTimeout(load, 400)));
@@ -1668,7 +1794,7 @@ function Ekipman({ me }) {
   const newPost = () => {
     if (!me) return go('/giris');
     if (!approved) return toast('İlan vermek için üyeliğinin onaylanması gerekiyor.', 'err');
-    setForm({ category: EQ_CATS[0], title: '', price: '', is_negotiable: false, condition: 'ikinci_el', description: '', photos: [] });
+    setForm({ category: EQ_CATS[0], title: '', price: '', is_negotiable: false, condition: 'ikinci_el', description: '', photos: [], contact_pref: 'whatsapp' });
     setTimeout(() => { const el = document.getElementById('eq-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
   };
   const onPhotos = async (e) => {
@@ -1690,7 +1816,7 @@ function Ekipman({ me }) {
     if (!form.title.trim()) return toast('İlana bir başlık yaz.', 'err');
     if (!form.photos.length) return toast('En az bir fotoğraf ekle.', 'err');
     const price = form.price === '' ? null : Math.max(0, Math.round(Number(String(form.price).replace(/[^\d]/g, '')) || 0));
-    const row = { category: form.category || EQ_CATS[0], title: form.title.trim(), price, is_negotiable: !!form.is_negotiable, condition: form.condition, description: form.description.trim(), photos: form.photos };
+    const row = { category: form.category || EQ_CATS[0], title: form.title.trim(), price, is_negotiable: !!form.is_negotiable, condition: form.condition, description: form.description.trim(), photos: form.photos, contact_pref: form.contact_pref || 'whatsapp' };
     const { data, error } = form.id ? await sb.from('equipment_posts').update(row).eq('id', form.id).select('id').single() : await sb.from('equipment_posts').insert(row).select('id').single();
     if (error) return toast(errMsg(error), 'err');
     setForm(null);
@@ -1766,6 +1892,7 @@ function Ekipman({ me }) {
               ${form.photos.length < 4 ? html`<label class=${'eq-add' + (busy ? ' eq-add-busy' : '')}>${busy ? '…' : '+ Fotoğraf'}<input type="file" accept="image/*" multiple hidden onChange=${onPhotos} /></label>` : null}
             </div>
           </div>
+          <${ContactPrefField} value=${form.contact_pref} onChange=${(v) => setForm({ ...form, contact_pref: v })} />
           <div class="row">
             <button type="submit" class="btn btn-red" disabled=${busy}>${form.id ? 'Kaydet' : 'İlanı yayınla'}</button>
             <button type="button" class="btn btn-ghost" onClick=${() => setForm(null)}>Vazgeç</button>
@@ -1806,9 +1933,7 @@ function Ekipman({ me }) {
                       <button type="button" class="btn btn-sm btn-dark" onClick=${() => toggleSold(p)}>${p.sold ? 'Satışta' : 'Satıldı'}</button>
                       <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setForm({ ...p, price: p.price == null ? '' : String(p.price) })}>Düzenle</button>
                       <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>Kaldır</button>`
-                    : !me ? html`<a class="btn btn-sm btn-ghost" href="#/giris">İletişim için giriş yap</a>`
-                    : !approved ? html`<span class="muted small">İletişim üyeliğin onaylanınca görünür.</span>`
-                    : html`<button type="button" class="btn btn-sm btn-wa" onClick=${() => openWhatsApp('equipment_contact', { p_post: p.id }, 'Merhaba, BÜMT Enstrüman Pazarı\'ndaki "' + p.title + '" ilanın hâlâ duruyor mu?', 'Bu üye telefon numarası eklememiş.')}>WhatsApp'tan yaz</button>`}
+                    : html`<${ContactButtons} me=${me} approved=${approved} pref=${p.contact_pref} size="sm" ctx=${{ kind: 'equipment', title: p.title, otherId: p.user_id, id: p.id }} />`}
                     ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
                   </div>
                 </div>
@@ -1869,9 +1994,7 @@ function EqDetail({ p, me, approved, canModerate, onClose, onEdit, onSold, onRem
                 <button type="button" class="btn btn-dark" onClick=${() => onSold(p)}>${p.sold ? 'Tekrar satışa al' : 'Satıldı olarak işaretle'}</button>
                 <button type="button" class="btn btn-ghost" onClick=${() => onEdit(p)}>Düzenle</button>
                 <button type="button" class="btn btn-ghost" onClick=${() => onRemove(p)}>İlanı kaldır</button>`
-              : !me ? html`<a class="btn btn-red" href="#/giris" onClick=${onClose}>İletişim için giriş yap</a>`
-              : !approved ? html`<p class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</p>`
-              : html`<button type="button" class="btn btn-wa btn-lg" onClick=${() => openWhatsApp('equipment_contact', { p_post: p.id }, 'Merhaba, BÜMT Enstrüman Pazarı\'ndaki "' + p.title + '" ilanın hâlâ duruyor mu?', 'Bu üye telefon numarası eklememiş.')}>WhatsApp'tan yaz</button>`}
+              : html`<${ContactButtons} me=${me} approved=${approved} pref=${p.contact_pref} ctx=${{ kind: 'equipment', title: p.title, otherId: p.user_id, id: p.id }} />`}
               ${canModerate && !mine ? html`<button type="button" class="btn btn-ghost" onClick=${() => onRemove(p)}>Kaldır</button>${p.review === 'incelemede' ? html`<button type="button" class="btn btn-ghost" onClick=${() => onPublish(p)}>Yayına al</button>` : null}` : null}
             </div>
           </div>
@@ -2013,6 +2136,9 @@ function App() {
   const [me, setMe] = useState(undefined);
   const [route, setRoute] = useState(parseRoute());
   const refresh = useCallback(async () => { try { setMe(await loadMe()); } catch (e) { setMe(null); } }, []);
+  const [unread, setUnread] = useState(0);
+  const pollUnread = useCallback(async () => { if (!me || !me.profile || me.profile.status !== 'onaylandi') { setUnread(0); return; } try { const { data } = await sb.rpc('dm_unread'); setUnread(data || 0); } catch (e) {} }, [me]);
+  useEffect(() => { pollUnread(); const t = setInterval(pollUnread, 15000); return () => clearInterval(t); }, [pollUnread]);
   useEffect(() => {
     refresh();
     const { data: { subscription } } = sb.auth.onAuthStateChange((ev) => {
@@ -2031,6 +2157,7 @@ function App() {
   else if (p === 'dinletiler') page = html`<${Dinletiler} me=${me} />`;
   else if (p === 'onay') page = html`<${OnayPage} me=${me} refresh=${refresh} />`;
   else if (p === 'ekipman') page = html`<${Ekipman} me=${me} />`;
+  else if (p === 'mesajlar') page = html`<${Mesajlar} me=${me} threadId=${route.param} onRead=${pollUnread} />`;
   else if (p === 'etkinlik') page = html`<${EventPage} id=${route.param} />`;
   else if (p === 'form') page = html`<${FormPage} id=${route.param} me=${me} />`;
   else if (p === 'giris') page = html`<${Giris} me=${me} />`;
@@ -2046,9 +2173,9 @@ function App() {
   else page = html`<div class="stack"><h1 class="h page-h">Sayfa bulunamadı</h1><a class="btn btn-ghost self-start" href="#/">Ana sayfa</a></div>`;
 
   return html`
-    <${Header} me=${me} route=${route} />
+    <${Header} me=${me} route=${route} unread=${unread} />
     <${StatusBanner} me=${me} />
-    <main class="wrap main" id="icerik">${me === undefined && ['prova', 'kurslar', 'dinletiler', 'profil', 'egitmen', 'pazar', 'yoklama', 'uye'].includes(p) ? html`<${Loading} />` : page}</main>
+    <main class="wrap main" id="icerik">${me === undefined && ['prova', 'kurslar', 'dinletiler', 'profil', 'egitmen', 'pazar', 'ekipman', 'mesajlar', 'yoklama', 'uye'].includes(p) ? html`<${Loading} />` : page}</main>
     <footer class="ftr">
       <div class="wrap ftr-in">
         <div class="row nowrap"><span class="ftr-logo"><img src="/assets/logo.png" alt="" /></span><b>Başkent Üniversitesi Müzik Topluluğu</b></div>

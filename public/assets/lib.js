@@ -82,7 +82,7 @@ export function FacultySelect({ value, onChange, required }) {
 export const CLASS_YEARS = ['Hazırlık', '1. sınıf', '2. sınıf', '3. sınıf', '4. sınıf', '5. sınıf', '6. sınıf', 'Yüksek lisans', 'Doktora', 'Mezun', 'Akademisyen / Personel'];
 
 export let PROFILE_COLS = 'id,student_no,username,full_name,department,class_year,member_type,instruments,status,is_staff,is_super,role_id,kvkk_at,created_at,notify_mail,avatar_url,bio';
-export let INSTRUCTOR_COLS = 'id,profile_id,full_name,instrument,kind,department,class_year,bio,active,created_at,avatar_url';
+export let INSTRUCTOR_COLS = 'id,profile_id,full_name,instrument,kind,department,class_year,bio,active,created_at,avatar_url,contact_pref';
 
 // Giriş yapan kişinin profili, yetkileri ve (varsa) eğitmen kaydı
 export async function loadMe() {
