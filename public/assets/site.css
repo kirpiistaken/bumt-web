@@ -533,8 +533,9 @@ body { overflow-x: clip; }
 .lb-count { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: #fff; font-weight: 600; background: rgba(255,255,255,.14); padding: 4px 12px; border-radius: 999px; }
 
 /* Enstrüman ilanı — detay penceresi (sahibinden tarzı) */
-.eq-title-btn { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; color: inherit; }
-.eq-title-btn:hover .eq-title { color: var(--red-dk); }
+.eq-click { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.eq-click:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--ink); }
+.eq-click:hover .eq-title { color: var(--red-dk); }
 .sheet { position: fixed; inset: 0; z-index: 80; background: rgba(10,10,10,.6); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; }
 .sheet-card { position: relative; width: 100%; max-width: 920px; background: var(--paper); border: 2px solid var(--ink); border-radius: 18px; box-shadow: 8px 8px 0 var(--ink); margin: auto; overflow: hidden; }
 .sheet-close { position: absolute; top: 12px; right: 12px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--ink); background: #fff; font-size: 16px; cursor: pointer; }

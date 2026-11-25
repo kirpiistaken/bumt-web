@@ -1764,17 +1764,17 @@ function Ekipman({ me }) {
             const hidden = p.review === 'incelemede' || p.review === 'kontrol';
             const cover = (p.photos || [])[0];
             return html`
-              <article class=${'eq-card' + (hidden ? ' post-hidden' : '') + (p.sold ? ' eq-sold' : '')}>
-                <button type="button" class="eq-cover" onClick=${() => setDetail(p)} aria-label=${p.title + ' ilanını aç'}>
+              <article class=${'eq-card eq-click' + (hidden ? ' post-hidden' : '') + (p.sold ? ' eq-sold' : '')} onClick=${(e) => { if (e.target.closest('.post-actions') || e.target.closest('a') || e.target.closest('button')) return; setDetail(p); }}>
+                <div class="eq-cover" role="button" tabindex="0" onClick=${() => setDetail(p)} onKeyDown=${(e) => { if (e.key === 'Enter') setDetail(p); }} aria-label=${p.title + ' ilanını aç'}>
                   ${cover ? html`<img src=${cover} alt=${p.title} loading="lazy" />` : html`<span class="eq-noimg">Fotoğraf yok</span>`}
                   ${p.sold ? html`<span class="eq-sold-tag">Satıldı</span>` : null}
                   ${(p.photos || []).length > 1 ? html`<span class="eq-count">📷 ${p.photos.length}</span>` : null}
-                </button>
+                </div>
                 <div class="eq-body">
                   ${hidden ? html`<div class="post-flag">${p.review === 'kontrol' ? 'Kontrol ediliyor…' : mine ? 'İncelemede — yönetim onaylayınca yayınlanacak' : '⚠️ Gizlendi: ' + (p.review_reason || 'uygunsuz olabilir')}
                     ${canModerate && !mine && p.review === 'incelemede' ? html` <button type="button" class="link-btn" onClick=${() => publish(p)}>Yayına al</button>` : null}</div>` : null}
                   <div class="row between"><span class="eq-price">${priceLabel(p)}</span><span class="tag tag-cream">${condLabel(p.condition)}</span></div>
-                  <button type="button" class="eq-title-btn" onClick=${() => setDetail(p)}><h3 class="eq-title">${p.title}</h3></button>
+                  <h3 class="eq-title">${p.title}</h3>
                   <div class="row-sm">${p.category ? html`<span class="tag tag-dark">${p.category}</span>` : null}${p.is_negotiable ? html`<span class="muted small">Pazarlık payı var</span>` : null}</div>
                   ${p.description ? html`<p class="eq-desc">${p.description}</p>` : null}
                   <div class="row nowrap eq-seller">
