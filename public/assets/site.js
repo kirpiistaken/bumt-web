@@ -1028,7 +1028,7 @@ function Kayit({ me }) {
     <div class="split">
       <div class="stack split-side">
         <h1 class="h page-h">Üye ol</h1>
-        <p class="muted">Kısa bir form. Öğrenci numaranı topluluk üye listesiyle karşılaştırıp hesabını onaylıyoruz; onaydan sonra prova, kurs ve dinleti rezervasyonu yapabilirsin.</p>
+        <p class="muted">Kısa bir form. Öğrenci numaranı topluluk üye listesiyle karşılaştırıp hesabını onaylıyoruz; onaydan sonra müzisyen pazarında ilan verebilir, ilanlardaki müzisyenlere yazabilirsin. Prova odası, kurslar ve dinletiler de yakında!</p>
         <p class="small">Zaten hesabın var mı? <a href="#/giris">Giriş yap</a></p>
       </div>
       <form class="card pad-lg stack split-main" onSubmit=${submit}>
@@ -1647,9 +1647,12 @@ function Kvkk() {
   return html`
     <div class="card pad-lg stack narrow prose">
       <h1 class="h2">KVKK Aydınlatma Metni</h1>
-      <p>Başkent Üniversitesi Müzik Topluluğu (BÜMT) olarak, üyelik ve etkinlik başvuruları sırasında paylaştığın ad soyad, öğrenci numarası, telefon, e-posta, bölüm, sınıf ve müzik bilgilerini; üyeliğini doğrulamak, prova odası, enstrüman kursu ve dinleti rezervasyonlarını yürütmek ve seninle iletişime geçmek amacıyla işliyoruz.</p>
-      <p>Bu bilgiler yalnızca topluluk yönetim kurulunun yetkili üyeleri tarafından görülebilir; eğitmenlerin telefon numaraları yalnızca giriş yapmış üyelere gösterilir. Verilerin, sitenin altyapı hizmetini sağlayan Supabase (veritabanı) ve Vercel (barındırma) sunucularında saklanır.</p>
-      <p>6698 sayılı Kanun'un 11. maddesi kapsamındaki haklarını kullanmak, bilgilerini güncellemek ya da hesabının silinmesini istemek için yönetim kuruluna başvurabilirsin.</p>
+      <p>Başkent Üniversitesi Müzik Topluluğu (BÜMT) olarak, siteye üye olurken ve siteyi kullanırken paylaştığın ad soyad, öğrenci numarası, telefon, e-posta, fakülte, bölüm, sınıf, müzik bilgileri, profil fotoğrafı ve "Hakkımda" yazını; üyeliğini doğrulamak, topluluk faaliyetlerini (müzisyen pazarı, prova odası, enstrüman kursları, dinleti ve etkinlik başvuruları) yürütmek ve seninle iletişime geçmek amacıyla işliyoruz.</p>
+      <p><b>Kim neyi görür?</b> Telefon numaran ve e-posta adresin sitede hiçbir üyeye gösterilmez; yalnızca topluluğun süper yöneticisi görebilir. Müzisyen pazarındaki "WhatsApp'tan yaz" butonu, numaranı göstermeden yalnızca onaylı üyelerin sana WhatsApp'tan yazabilmesini sağlar. Onaylı üyeler; adını (soyadının baş harfiyle), profil fotoğrafını, fakülte/bölüm bilgini, enstrümanlarını ve ilanlarını görebilir. Üyelik başvurularını ve talepleri yalnızca ilgili yetkiye sahip yönetim kurulu üyeleri görür.</p>
+      <p><b>Prova odası fotoğrafları:</b> Prova odası kullanımı sonrası yüklenen oda fotoğrafları yalnızca kontrol amacıyla tutulur ve yönetim onayından 7 gün sonra otomatik olarak silinir.</p>
+      <p><b>Hizmet sağlayıcılar:</b> Verilerin; sitenin veritabanı (Supabase), barındırma (Vercel) ve e-posta gönderimi (Resend) hizmetlerini sağlayan şirketlerin, yurt dışında da bulunabilen sunucularında saklanır ve işlenir. Müzisyen pazarı ilanlarının metni, uygunsuz içerik kontrolü için otomatik bir denetim hizmetinden geçirilebilir. Verilerin bu hizmetler dışında üçüncü kişilerle paylaşılmaz ve ticari amaçla kullanılmaz.</p>
+      <p><b>Saklama süresi:</b> Bilgilerin üyeliğin devam ettiği sürece saklanır; hesabının silinmesini istediğinde silinir.</p>
+      <p>6698 sayılı Kişisel Verilerin Korunması Kanunu'nun 11. maddesi kapsamındaki haklarını kullanmak, bilgilerini güncellemek ya da hesabının silinmesini istemek için yönetim kuruluna ya da Instagram'da @baskentmt hesabına yazabilirsin. Bilgilerinin çoğunu Profilim sayfasından kendin de güncelleyebilirsin.</p>
     </div>`;
 }
 
