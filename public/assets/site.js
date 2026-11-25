@@ -1803,6 +1803,8 @@ function Ekipman({ me }) {
 function EqDetail({ p, me, approved, canModerate, onClose, onEdit, onSold, onRemove, onPublish }) {
   const [i, setI] = useState(0);
   const [zoom, setZoom] = useState(false);
+  const [school, setSchool] = useState(null);
+  useEffect(() => { if (!approved) return; sb.rpc('member_card', { p_id: p.user_id }).then(({ data }) => { if (data && data[0]) setSchool(data[0]); }).catch(() => {}); }, [p.user_id]);
   const photos = (p.photos || []).filter(Boolean);
   const mine = me && p.user_id === me.user.id;
   const hidden = p.review === 'incelemede' || p.review === 'kontrol';
@@ -1839,7 +1841,7 @@ function EqDetail({ p, me, approved, canModerate, onClose, onEdit, onSold, onRem
             <div class="row-sm">${p.category ? html`<span class="tag tag-dark">${p.category}</span>` : null}<span class="tag tag-cream">${condLabel(p.condition)}</span>${p.sold ? html`<span class="tag tag-red">Satıldı</span>` : null}</div>
             <div class="row nowrap eq-seller">
               <${Avatar} url=${p.avatar_url} name=${p.display_name} size=${40} />
-              <span class="small">${approved ? html`<a href=${'#/uye/' + p.user_id} onClick=${onClose}><b>${p.display_name}</b></a>` : html`<b>${p.display_name}</b>`} <${UserTags} uid=${p.user_id} /><br/><span class="muted">${fmtLong(String(p.created_at).slice(0, 10))}</span></span>
+              <span class="small stack-xs"><span>${approved ? html`<a href=${'#/uye/' + p.user_id} onClick=${onClose}><b>${p.display_name}</b></a>` : html`<b>${p.display_name}</b>`} <${UserTags} uid=${p.user_id} /></span>${school ? html`<${SchoolLine} p=${school} cls="muted" />` : null}<span class="muted">${fmtLong(String(p.created_at).slice(0, 10))}</span></span>
             </div>
             ${p.description ? html`<div class="sheet-desc">${p.description}</div>` : html`<p class="muted">Açıklama eklenmemiş.</p>`}
             <div class="sheet-actions">
