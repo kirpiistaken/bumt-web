@@ -13,7 +13,7 @@ const parseRoute = () => {
 const go = (path) => { location.hash = path; };
 
 const MSG_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z';
-const MAIL_NOTES = { sent: '📧 Bildirim e-postası gönderildi.', throttled: '📧 E-posta atlandı: son 10 dk içinde zaten bildirim gitti (karşı taraf henüz okumadı).', no_email: '📧 E-posta gitmedi: karşı tarafın profilinde e-posta adresi yok.', off: '📧 E-posta gitmedi: karşı taraf bildirimleri kapatmış.', no_key: '📧 E-posta gitmedi: bu ortamda e-posta servisi (RESEND_API_KEY) tanımlı değil.', error: '📧 E-posta servisi hata verdi (Resend reddetti).' };
+const MAIL_NOTES = { sent: '📧 Bildirim e-postası gönderildi.', throttled: '📧 E-posta atlandı: bu konuşmada son 10 dk içinde gönderdiğin ve karşı tarafın henüz okumadığı bir mesaj var (spam olmasın diye).', no_email: '📧 E-posta gitmedi: karşı tarafın profilinde e-posta adresi yok.', off: '📧 E-posta gitmedi: karşı taraf bildirimleri kapatmış.', no_key: '📧 E-posta gitmedi: bu ortamda e-posta servisi (RESEND_API_KEY) tanımlı değil.', error: '📧 E-posta servisi hata verdi (Resend reddetti).' };
 function mailNote(m) {
   // Test sitesinde her gönderimde e-posta durumunu göster; canlıda sadece servis kapalıysa
   const preview = /vercel\.app$/.test(location.hostname);
