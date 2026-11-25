@@ -653,16 +653,16 @@ body { overflow-x: clip; }
 
 /* Üst menü tek satır: daha geniş alan, "yakında" başlığın altında küçük */
 @media (min-width: 861px) {
-  .hdr .wrap { max-width: 1480px; padding: 0 28px; }
-  .hdr-in { flex-wrap: nowrap; gap: 12px 28px; }
+  .hdr .wrap { max-width: 1480px; padding-left: 28px; padding-right: 28px; }
+  .hdr-in { flex-wrap: nowrap; justify-content: center; gap: 12px 40px; padding-top: 12px; padding-bottom: 12px; }
   .brand { flex: none; }
   .brand-txt small { white-space: nowrap; }
-  .nav { flex-wrap: nowrap; gap: 6px; min-width: 0; }
+  .nav { flex: 0 1 auto; flex-wrap: nowrap; gap: 6px; min-width: 0; }
   .nav-a { white-space: nowrap; padding: 0 14px; }
   .nav-soon { flex-direction: column; justify-content: center; padding: 0 12px; line-height: 1.15; }
   .nav-soon .nav-tag { display: block; margin: 1px 0 0; padding: 0; border: 0; font-size: 9px; letter-spacing: .1em; opacity: .85; }
   .hdr-right { gap: 10px; flex: none; }
   .menu-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
-@media (min-width: 861px) and (max-width: 1280px) { .brand-txt small { display: none; } }
+@media (min-width: 861px) and (max-width: 1280px) { .brand-txt small { display: none; } .hdr-in { gap: 12px 24px; } }
 @media (min-width: 861px) and (max-width: 1080px) { .menu-name { display: none; } .nav-a { padding: 0 10px; } .nav { gap: 2px; } }
