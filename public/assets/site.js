@@ -1,6 +1,6 @@
 // BÜMT — herkese açık site
 import {
-  html, render, useState, useEffect, useCallback,
+  html, render, useState, useEffect, useCallback, useRef,
   sb, initSupabase, loadMe, memberEmail, errMsg, toast, Toaster,
   todayStr, addDays, fmtLong, fmtShort, hhmm, addMinutes, nextFridays,
   DAY_NAMES, DAY_SHORT, GRID_DAYS, INSTRUMENTS, CLASS_YEARS, waLink, InstructorScheduleEditor, notifyLesson, notifyProva, notifyDinleti, QrScanner, yoklamaCode, timeTR, Avatar, uploadAvatar, PasswordInput, signIn, compressImage, PROFILE_COLS, UserTags, mapsHref, HAS_FACULTY, SchoolLine, FacultySelect, INSTRUCTOR_COLS
@@ -11,6 +11,233 @@ const parseRoute = () => {
   return { page: parts[0] || '', param: parts[1] || '' };
 };
 const go = (path) => { location.hash = path; };
+
+const MSG_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z';
+const MAIL_NOTES = { sent: '📧 Bildirim e-postası gönderildi.', throttled: '📧 E-posta atlandı: bu konuşmada son 10 dk içinde gönderdiğin ve karşı tarafın henüz okumadığı bir mesaj var (spam olmasın diye).', no_email: '📧 E-posta gitmedi: karşı tarafın profilinde e-posta adresi yok.', off: '📧 E-posta gitmedi: karşı taraf bildirimleri kapatmış.', no_key: '📧 E-posta gitmedi: bu ortamda e-posta servisi (RESEND_API_KEY) tanımlı değil.', error: '📧 E-posta servisi hata verdi (Resend reddetti).' };
+function mailNote(m) {
+  // Test sitesinde her gönderimde e-posta durumunu göster; canlıda sadece servis kapalıysa
+  const preview = /vercel\.app$/.test(location.hostname);
+  if (!m) { if (preview) toast('📧 Sunucu e-posta durumu döndürmedi (eski sürüm?).', 'err'); return; }
+  if (preview || m === 'no_key') toast(MAIL_NOTES[m] || ('📧 ' + m), m === 'sent' || m === 'throttled' ? undefined : 'err');
+}
+async function sendMessage(thread_id, body) {
+  // Mesaj doğrudan veritabanına yazılır (hızlı); e-posta bildirimi arkada ayrıca tetiklenir, bekletmez.
+  const { error } = await sb.rpc('dm_send', { p_thread: thread_id, p_body: body });
+  if (error) return { error: errMsg(error) };
+  (async () => {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const r = await fetch('/api/mesaj', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify({ thread_id, notify_only: true }) });
+      const d = await r.json().catch(() => ({}));
+      mailNote(d.mail);
+    } catch (e) { /* bildirim gitmese de mesaj gitti */ }
+  })();
+  return { ok: true };
+}
+async function startChat(other, ctype, cid, title) {
+  if (!other) return toast('Bu kişiyle site üzerinden mesajlaşma şu an yapılamıyor.', 'err');
+  const { data, error } = await sb.rpc('dm_start', { p_other: other, p_ctype: ctype || 'direct', p_cid: cid || null, p_title: title || '' });
+  if (error) return toast(errMsg(error), 'err');
+  go('/mesajlar/' + data);
+}
+function waForCtx(ctx) {
+  if (ctx.kind === 'market') return openWhatsApp('market_contact', { p_post: ctx.id }, 'Merhaba, BÜMT Müzisyen Pazarı\'ndaki "' + ctx.title + '" ilanın için yazıyorum.', 'Bu üye telefon numarası eklememiş.');
+  if (ctx.kind === 'equipment') return openWhatsApp('equipment_contact', { p_post: ctx.id }, 'Merhaba, BÜMT Enstrüman Pazarı\'ndaki "' + ctx.title + '" ilanın hâlâ duruyor mu?', 'Bu üye telefon numarası eklememiş.');
+  return openWhatsApp('instructor_contact', { p_instructor: ctx.id }, 'Merhaba, BÜMT sitesinden ' + ctx.title + ' için yazıyorum.', 'Eğitmen henüz telefon eklememiş.');
+}
+function ContactButtons({ me, approved, pref, ctx, size }) {
+  const sm = size === 'sm' ? ' btn-sm' : '';
+  if (!me) return html`<a class=${'btn btn-ghost' + sm} href="#/giris">İletişim için giriş yap</a>`;
+  if (!approved) return html`<span class="muted small">İletişim üyeliğin onaylanınca görünür.</span>`;
+  const canChat = !!ctx.otherId;
+  const pr = pref || 'whatsapp';
+  const showWa = pr !== 'chat' || !canChat;
+  const showChat = pr !== 'whatsapp' && canChat;
+  return html`
+    ${showWa ? html`<button type="button" class=${'btn btn-wa' + sm} onClick=${() => waForCtx(ctx)}>WhatsApp'tan yaz</button>` : null}
+    ${showChat ? html`<button type="button" class=${'btn btn-dark' + sm} onClick=${() => startChat(ctx.otherId, ctx.kind, ctx.id, ctx.title)}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d=${MSG_ICON}/></svg> Mesaj gönder</button>` : null}`;
+}
+function ContactPrefField({ value, onChange }) {
+  const opts = [['whatsapp', 'WhatsApp numaram'], ['chat', 'Site üzerinden mesaj'], ['both', 'İkisi de olsun']];
+  return html`
+    <div class="stack-xs">
+      <span class="fld"><span>İletişim yöntemi</span></span>
+      <div class="row chips">${opts.map(([v, l]) => html`<${Pill} on=${(value || 'whatsapp') === v} onClick=${() => onChange(v)}>${l}<//>`)}</div>
+      <span class="muted small">"WhatsApp numaram"da numaran yine gizli kalır, sadece WhatsApp butonu çıkar. "Site üzerinden mesaj"da numaran hiç paylaşılmaz; ilgilenenler seninle site içindeki mesajlaşmadan konuşur.</span>
+    </div>`;
+}
+
+const msgTime = (ts) => {
+  const d = new Date(ts); const now = new Date();
+  const hm = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return hm;
+  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) + ' ' + hm;
+};
+
+function ChatWidget({ me, unread, onRead }) {
+  const [open, setOpen] = useState(false);
+  const [threads, setThreads] = useState(null);
+  const [active, setActive] = useState(null);
+  const [msgs, setMsgs] = useState([]);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const uid = me && me.user.id;
+  const endRef = useRef(null);
+  if (!me || !me.profile || me.profile.is_staff || me.profile.status !== 'onaylandi') return null;
+
+  const loadThreads = useCallback(async () => { const { data } = await sb.rpc('my_threads'); setThreads(data || []); }, []);
+  const loadMsgs = useCallback(async (tid) => {
+    if (!tid) return;
+    const { data } = await sb.from('dm_messages').select('id,sender_id,body,created_at').eq('thread_id', tid).order('created_at');
+    setMsgs(data || []);
+    await sb.rpc('dm_mark_read', { p_thread: tid }); onRead && onRead(); loadThreads();
+  }, [loadThreads, onRead]);
+  useEffect(() => { if (open) loadThreads(); }, [open, loadThreads]);
+  useEffect(() => { if (open && active) loadMsgs(active); }, [open, active]);
+  useEffect(() => {
+    if (!open) return;
+    const t = setInterval(() => { active ? loadMsgs(active) : loadThreads(); }, 5000);
+    return () => clearInterval(t);
+  }, [open, active, loadMsgs, loadThreads]);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView(); }, [msgs.length]);
+
+  const cur = (threads || []).find((t) => t.thread_id === active);
+  const send = async (e) => {
+    e.preventDefault(); const b = text.trim(); if (!b || !active) return;
+    setText(''); const tmp = { id: 'tmp' + Date.now(), sender_id: uid, body: b, created_at: new Date().toISOString(), pending: true };
+    setMsgs((m) => [...m, tmp]);
+    const r = await sendMessage(active, b);
+    if (r.error) { setMsgs((m) => m.filter((x) => x !== tmp)); setText(b); return toast(r.error, 'err'); }
+    loadMsgs(active);
+  };
+
+  return html`
+    <div class="cw">
+      ${open ? html`
+        <div class="cw-panel">
+          <div class="cw-head">
+            ${active ? html`<button type="button" class="cw-back" aria-label="Geri" onClick=${() => setActive(null)}>‹</button>` : null}
+            <b>${active && cur ? cur.other_name : 'Mesajlar'}</b>
+            <div class="cw-head-r">
+              <a class="cw-expand" href=${active ? '#/mesajlar/' + active : '#/mesajlar'} onClick=${() => setOpen(false)} aria-label="Tam ekran">⤢</a>
+              <button type="button" class="cw-x" aria-label="Kapat" onClick=${() => setOpen(false)}>✕</button>
+            </div>
+          </div>
+          ${!active ? html`
+            <div class="cw-threads">
+              ${threads === null ? html`<div class="pad muted small">Yükleniyor…</div>`
+                : threads.length === 0 ? html`<div class="pad muted small">Henüz mesajın yok. Bir ilandaki "Mesaj gönder" ile başlayabilirsin.</div>`
+                : threads.map((t) => html`
+                  <button type="button" class="cw-thread" onClick=${() => setActive(t.thread_id)}>
+                    <${Avatar} url=${t.other_avatar} name=${t.other_name} size=${38} />
+                    <span class="cw-thread-txt"><span class="cw-thread-top"><b>${t.other_name}</b>${t.unread ? html`<span class="msg-badge">${t.unread}</span>` : null}</span><span class="msg-thread-last">${t.last_sender === uid ? 'Sen: ' : ''}${t.last_body || '—'}</span></span>
+                  </button>`)}
+            </div>`
+          : html`
+            <div class="cw-body">
+              ${msgs.map((m) => html`<div key=${m.id} class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs') + (m.pending ? ' pending' : '')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
+              <div ref=${endRef}></div>
+            </div>
+            <form class="cw-input" onSubmit=${send}>
+              <input class="inp inp-sm" placeholder="Mesaj yaz…" value=${text} onInput=${(e) => setText(e.target.value)} maxlength="2000" />
+              <button type="submit" class="btn btn-red btn-sm" disabled=${sending || !text.trim()}>Gönder</button>
+            </form>`}
+        </div>` : null}
+      <button type="button" class="cw-fab" aria-label="Mesajlar" onClick=${() => setOpen(!open)}>
+        ${open ? html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`
+          : html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d=${MSG_ICON}/></svg>`}
+        ${!open && unread ? html`<span class="cw-badge">${unread > 9 ? '9+' : unread}</span>` : null}
+      </button>
+    </div>`;
+}
+
+function Mesajlar({ me, threadId, onRead }) {
+  const [threads, setThreads] = useState(null);
+  const [active, setActive] = useState(threadId || null);
+  const [msgs, setMsgs] = useState([]);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const uid = me && me.user.id;
+  const endRef = useRef(null);
+
+  const loadThreads = useCallback(async () => {
+    const { data } = await sb.rpc('my_threads');
+    setThreads(data || []);
+  }, []);
+  const loadMsgs = useCallback(async (tid) => {
+    if (!tid) return;
+    const { data } = await sb.from('dm_messages').select('id,sender_id,body,created_at').eq('thread_id', tid).order('created_at');
+    setMsgs(data || []);
+    await sb.rpc('dm_mark_read', { p_thread: tid });
+    onRead && onRead();
+    loadThreads();
+  }, [loadThreads, onRead]);
+
+  useEffect(() => { if (me) loadThreads(); }, [me, loadThreads]);
+  useEffect(() => { setActive(threadId || null); }, [threadId]);
+  useEffect(() => { if (active) loadMsgs(active); else setMsgs([]); }, [active]);
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => loadMsgs(active), 5000);
+    return () => clearInterval(t);
+  }, [active, loadMsgs]);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView(); }, [msgs.length]);
+
+  if (me === undefined) return html`<${Loading} />`;
+  if (!me) return html`<div class="stack"><h1 class="h page-h">Mesajlar</h1><p class="muted">Mesajlarını görmek için giriş yap.</p><a class="btn btn-red self-start" href="#/giris">Giriş yap</a></div>`;
+  if (me.profile.status !== 'onaylandi') return html`<div class="stack"><h1 class="h page-h">Mesajlar</h1><p class="muted">Mesajlaşma, üyeliğin onaylandıktan sonra açılır.</p><a class="btn btn-red self-start" href="#/onay">Hesabımı onayla</a></div>`;
+
+  const cur = (threads || []).find((t) => t.thread_id === active);
+  const send = async (e) => {
+    e.preventDefault();
+    const b = text.trim();
+    if (!b || !active) return;
+    setText(''); const tmp = { id: 'tmp' + Date.now(), sender_id: uid, body: b, created_at: new Date().toISOString(), pending: true };
+    setMsgs((m) => [...m, tmp]);
+    const r = await sendMessage(active, b);
+    if (r.error) { setMsgs((m) => m.filter((x) => x !== tmp)); setText(b); return toast(r.error, 'err'); }
+    loadMsgs(active);
+  };
+
+  return html`
+    <div class=${'msgs' + (active ? ' msgs-open' : '')}>
+      <aside class="msg-list">
+        <h1 class="h2 msg-list-h">Mesajlar</h1>
+        <${NotifyToggle} me=${me} compact=${true} />
+        ${threads === null ? html`<${Loading} />` : threads.length === 0 ? html`<p class="muted pad">Henüz mesajın yok. Bir ilandaki "Mesaj gönder" ile konuşma başlatabilirsin.</p>` : html`
+          <div class="msg-threads">
+            ${threads.map((t) => html`
+              <button type="button" class=${'msg-thread' + (t.thread_id === active ? ' on' : '')} onClick=${() => { setActive(t.thread_id); location.hash = '#/mesajlar/' + t.thread_id; }}>
+                <${Avatar} url=${t.other_avatar} name=${t.other_name} size=${44} />
+                <span class="msg-thread-txt">
+                  <span class="msg-thread-top"><b>${t.other_name}</b><span class="msg-thread-time">${msgTime(t.last_message_at)}</span></span>
+                  ${t.context_title ? html`<span class="msg-ctx">${t.context_title}</span>` : null}
+                  <span class="msg-thread-last">${t.last_sender === uid ? 'Sen: ' : ''}${t.last_body || '—'}</span>
+                </span>
+                ${t.unread ? html`<span class="msg-badge">${t.unread}</span>` : null}
+              </button>`)}
+          </div>`}
+      </aside>
+      <section class="msg-pane">
+        ${!active ? html`<div class="msg-empty"><p class="muted">Soldan bir konuşma seç.</p></div>` : html`
+          <div class="msg-head">
+            <button type="button" class="msg-back" aria-label="Geri" onClick=${() => { setActive(null); location.hash = '#/mesajlar'; }}>‹</button>
+            ${cur ? html`<a class="msg-head-who" href=${'#/uye/' + cur.other_id}><${Avatar} url=${cur.other_avatar} name=${cur.other_name} size=${36} /><div class="stack-0"><b>${cur.other_name}</b>${cur.context_title ? html`<span class="muted small">${cur.context_title}</span>` : null}</div></a>` : null}
+          </div>
+          <div class="msg-body">
+            ${msgs.map((m) => html`<div key=${m.id} class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs') + (m.pending ? ' pending' : '')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
+            <div ref=${endRef}></div>
+          </div>
+          <form class="msg-input" onSubmit=${send}>
+            <input class="inp" placeholder="Mesaj yaz…" value=${text} onInput=${(e) => setText(e.target.value)} maxlength="2000" />
+            <button type="submit" class="btn btn-red" disabled=${sending || !text.trim()}>Gönder</button>
+          </form>`}
+      </section>
+    </div>`;
+}
+
+
 
 const Field = ({ label, hint, children }) => html`
   <label class="lbl"><span>${label}</span>${children}${hint ? html`<small class="muted">${hint}</small>` : null}</label>`;
@@ -24,10 +251,10 @@ function Pill({ on, onClick, children, label }) {
 // ---------------------------------------------------------------------
 // Üst menü
 // ---------------------------------------------------------------------
-const NAV = [['', 'Ana Sayfa'], ['pazar', 'Müzisyen Pazarı'], ['prova', 'Prova Odası'], ['kurslar', 'Kurslar'], ['dinletiler', 'Dinletiler']];
+const NAV = [['', 'Ana Sayfa'], ['pazar', 'Müzisyen Pazarı'], ['ekipman', 'Enstrüman Pazarı'], ['prova', 'Prova Odası'], ['kurslar', 'Kurslar'], ['dinletiler', 'Dinletiler']];
 const SOON = { prova: 1, kurslar: 1, dinletiler: 1 };
 
-function Header({ me, route }) {
+function Header({ me, route, unread }) {
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [route.page]);
   const name = me && me.profile ? (me.profile.full_name || me.profile.student_no || 'Hesabım') : '';
@@ -43,6 +270,7 @@ function Header({ me, route }) {
           ${NAV.map(([p, l]) => html`<a href=${'#/' + p} class=${'nav-a ' + (route.page === p ? 'nav-on ' : '') + (p === 'pazar' ? 'nav-hot ' : '') + (SOON[p] ? 'nav-soon' : '')}>${l}${SOON[p] ? html`<small class="nav-tag">yakında</small>` : null}</a>`)}
         </nav>
         <div class="hdr-right">
+          ${me && me.profile && !me.profile.is_staff ? html`<a class="msg-btn" href="#/mesajlar" aria-label="Mesajlar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d=${MSG_ICON}/></svg>${unread ? html`<span class="msg-dot">${unread > 9 ? '9+' : unread}</span>` : null}</a>` : null}
           ${me === undefined ? null : !me ? html`
             <a class="btn btn-red btn-sm" href="#/giris">Giriş</a>
           ` : html`
@@ -55,6 +283,7 @@ function Header({ me, route }) {
               ${open ? html`
                 <div class="menu-pop">
                   <a href="#/profil">Profilim ve rezervasyonlarım</a>
+                  <a href="#/mesajlar">Mesajlarım${unread ? ' (' + unread + ')' : ''}</a>
                   ${me.instructor ? html`<a href="#/egitmen">Eğitmen paneli</a>` : null}
                   ${me.isAdmin ? html`<a href="/yonetim/">Yönetim paneli</a>` : null}
                   <button type="button" onClick=${logout}>Çıkış yap</button>
@@ -71,9 +300,10 @@ const ICON = {
   prova: 'M4 21h16M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M14 12h.01',
   kurslar: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   dinletiler: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3M19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
-  pazar: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8'
+  pazar: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',
+  ekipman: 'M20 7h-3V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zM9 5h6v2H9z'
 };
-const BNAV = [['', 'Ana Sayfa', 'home'], ['pazar', 'Pazar', 'pazar'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler']];
+const BNAV = [['', 'Ana Sayfa', 'home'], ['pazar', 'Pazar', 'pazar'], ['ekipman', 'Ekipman', 'ekipman'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler']];
 
 // Numarayı sitede göstermeden doğrudan WhatsApp'ı açar.
 // Pencere tıklama anında açılır (telefon tarayıcıları sonradan açılan pencereleri engeller), numara gelince WhatsApp'a yönlenir.
@@ -191,6 +421,32 @@ function gateMessage(g) {
 // Ana sayfa
 // ---------------------------------------------------------------------
 const WA_ICON = 'M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z';
+// E-posta bildirimi aç/kapa — dokununca anında kaydedilir (Kaydet gerekmez)
+function NotifyToggle({ me, compact }) {
+  const p = me && me.profile;
+  const [on, setOn] = useState(p ? p.notify_dm !== false : true);
+  const [busy, setBusy] = useState(false);
+  if (!p || !('notify_dm' in p)) return null;
+  const flip = async () => {
+    const v = !on; setOn(v); setBusy(true);
+    const { error } = await sb.from('profiles').update({ notify_dm: v }).eq('id', p.id);
+    setBusy(false);
+    if (error) { setOn(!v); return toast('Kaydedilemedi: ' + error.message, 'err'); }
+    p.notify_dm = v;
+    toast(v ? 'Yeni mesajlarda e-posta alacaksın.' : 'Mesaj e-postaları kapatıldı.');
+  };
+  const sw = html`<button type="button" role="switch" aria-checked=${on} disabled=${busy} class=${'sw' + (on ? ' sw-on' : '')} onClick=${flip}><span></span></button>`;
+  if (compact) return html`<div class="notify-mini">${sw}<span>E-posta bildirimi ${on ? 'açık' : 'kapalı'}</span></div>`;
+  return html`
+    <div class="card pad notify-card">
+      <div class="stack-xs">
+        <b>🔔 Mesaj bildirimleri</b>
+        <span class="muted small">Biri sana site üzerinden mesaj yazınca ${p.contact_email ? html`<b>${p.contact_email}</b>` : 'e-posta adresine'} haber verelim.${!p.contact_email ? ' (Önce aşağıdan bir e-posta adresi ekle.)' : ''}</span>
+      </div>
+      ${sw}
+    </div>`;
+}
+
 function WaGroupCard({ me, compact }) {
   const [link, setLink] = useState(null);
   const approved = me && me.profile && me.profile.status === 'onaylandi';
@@ -639,7 +895,7 @@ function Kurslar({ me }) {
 
   const load = useCallback(async () => {
     const [{ data: ins }, { data: slots }, { data: bookings }] = await Promise.all([
-      sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id,avatar_url' + (HAS_FACULTY ? ',faculty' : '')).eq('active', true).order('instrument').order('full_name'),
+      sb.from('instructors').select('id,full_name,instrument,kind,department,class_year,bio,profile_id,avatar_url,contact_pref' + (HAS_FACULTY ? ',faculty' : '')).eq('active', true).order('instrument').order('full_name'),
       sb.from('instructor_slots').select('instructor_id,weekday,hour'),
       sb.from('lesson_bookings').select('id,instructor_id,weekday,hour,user_id,display_name,status').neq('status', 'reddedildi')
     ]);
@@ -662,12 +918,7 @@ function Kurslar({ me }) {
   const open = (id) => { setSelId(id); setPicked(null); setTimeout(() => { const el = document.getElementById('takvim'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
 
   const waText = (t) => 'Merhaba ' + t.full_name + ', BÜMT sitesinden ' + t.instrument + ' dersi için yazıyorum.';
-  const Contact = ({ t, small }) => {
-    const cls = 'btn ' + (small ? 'btn-sm ' : '');
-    if (!me) return html`<a class=${cls + 'btn-ghost'} href="#/giris">İletişim için giriş yap</a>`;
-    if (!approvedMember) return html`<span class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</span>`;
-    return html`<button type="button" class=${cls + 'btn-wa'} onClick=${() => openWhatsApp('instructor_contact', { p_instructor: t.id }, waText(t), 'Eğitmen henüz telefon eklememiş.')}>WhatsApp'tan yaz</button>`;
-  };
+  const Contact = ({ t, small }) => html`<${ContactButtons} me=${me} approved=${approvedMember} pref=${t.contact_pref} size=${small ? 'sm' : ''} ctx=${{ kind: 'instructor', title: t.instrument + ' dersi', otherId: t.profile_id, id: t.id }} />`;
 
   let grid = null;
   if (sel) {
@@ -1101,7 +1352,7 @@ function Kayit({ me }) {
           <${Field} label="Ad Soyad"><input class="inp" required autocomplete="name" value=${f.full_name} onInput=${set('full_name')} /><//>
           <${Field} label="Öğrenci numarası" hint=${f.student_no && !/^[0-9]{8}$/.test(f.student_no.replace(/\s+/g, '')) ? '⚠️ Öğrenci numarası 8 haneli olmalı (' + f.student_no.replace(/\D/g, '').length + '/8)' : '8 haneli öğrenci numaran · Giriş yaparken bunu kullanacaksın'}><input class=${'inp' + (f.student_no && !/^[0-9]{8}$/.test(f.student_no.replace(/\s+/g, '')) ? ' inp-bad' : '')} required inputmode="numeric" pattern="[0-9]{8}" maxlength="8" title="8 haneli öğrenci numaranı yaz" placeholder="ör. 22012345" value=${f.student_no} onInput=${(e) => setF({ ...f, student_no: e.target.value.replace(/\D/g, '').slice(0, 8) })} /><//>
           <${Field} label="Telefon (WhatsApp)"><input class="inp" type="tel" required autocomplete="tel" value=${f.phone} onInput=${set('phone')} placeholder="05xx xxx xx xx" /><//>
-          <${Field} label="E-posta" hint="Şifreni unutursan sıfırlama linki buraya gelir"><input class="inp" type="email" required autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
+          <${Field} label="Kişisel e-posta" hint="Gmail, Outlook gibi kişisel bir adres yaz; okul e-postanı DEĞİL. Şifre sıfırlama ve yeni mesaj bildirimleri buraya gelir."><input class="inp" type="email" required autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} placeholder="ornek@gmail.com" /><//>
           <${Field} label="Fakülte"><${FacultySelect} required value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>
           <${Field} label="Bölüm"><input class="inp" required value=${f.department} onInput=${set('department')} placeholder="ör. Bilgisayar Mühendisliği" /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
@@ -1222,6 +1473,7 @@ function Profil({ me, refresh }) {
       </div>
 
       <${WaGroupCard} me=${me} />
+      <${NotifyToggle} me=${me} />
       ${p.status === 'bekliyor' && !p.is_staff ? html`<${SchoolVerify} studentNo=${p.student_no} onCheck=${refresh} />` : null}
 
       <div class="card pad row photo-card">
@@ -1291,7 +1543,7 @@ function Egitmen({ me, refresh }) {
   const [f, setF] = useState(null);
   useEffect(() => {
     if (me === null) go('/giris');
-    if (me && me.instructor) setF({ phone: me.instructor.phone, email: me.instructor.email || '', bio: me.instructor.bio });
+    if (me && me.instructor) setF({ phone: me.instructor.phone, email: me.instructor.email || '', bio: me.instructor.bio, contact_pref: me.instructor.contact_pref || 'whatsapp' });
   }, [me && me.user.id, me && me.instructor && me.instructor.id]);
   if (me === undefined) return html`<${Loading} />`;
   if (!me || !me.instructor) return html`<div class="locked"><h1 class="h2">Eğitmen paneli</h1><p class="muted">Bu sayfa eğitmen olarak eklenmiş üyeler içindir. Eğitmen olmak istiyorsan yönetim kuruluna yaz.</p></div>`;
@@ -1304,7 +1556,7 @@ function Egitmen({ me, refresh }) {
   };
   const save = async (e) => {
     e.preventDefault();
-    const { error } = await sb.from('instructors').update({ phone: f.phone, email: f.email.trim(), bio: f.bio }).eq('id', ins.id);
+    const { error } = await sb.from('instructors').update({ phone: f.phone, email: f.email.trim(), bio: f.bio, contact_pref: f.contact_pref || 'whatsapp' }).eq('id', ins.id);
     if (error) return toast(errMsg(error), 'err');
     toast('Bilgilerin güncellendi.');
     refresh();
@@ -1330,6 +1582,7 @@ function Egitmen({ me, refresh }) {
           <${Field} label="Talep bildirimleri için e-postan" hint="Yeni ders talepleri bu adrese gelir"><input class="inp" type="email" value=${f.email} onInput=${(e) => setF({ ...f, email: e.target.value })} /><//>
           <${Field} label="WhatsApp numaran" hint="Sadece giriş yapmış üyeler görür"><input class="inp" type="tel" value=${f.phone} onInput=${(e) => setF({ ...f, phone: e.target.value })} /><//>
           <${Field} label="Kısa tanıtım"><textarea class="inp" rows="3" maxlength="300" value=${f.bio} onInput=${(e) => setF({ ...f, bio: e.target.value })} placeholder="Örn. 8 yıldır keman çalıyorum, başlangıç seviyesine ders veriyorum."></textarea><//>
+          <${ContactPrefField} value=${f.contact_pref} onChange=${(v) => setF({ ...f, contact_pref: v })} />
           <button type="submit" class="btn btn-dark self-start">Kaydet</button>
         </form>` : null}
     </div>`;
@@ -1468,7 +1721,7 @@ function Pazar({ me }) {
 
   const load = useCallback(async () => {
     let { data, error } = await sb.from('market_posts').select(MARKET_COLS + ',review,review_reason').eq('active', true).order('created_at', { ascending: false });
-    if (error && /review/.test(error.message || '')) ({ data, error } = await sb.from('market_posts').select(MARKET_COLS).eq('active', true).order('created_at', { ascending: false }));
+    if (error) ({ data, error } = await sb.from('market_posts').select('id,user_id,kind,title,my_role,looking_for,genre,description,display_name,avatar_url,active,created_at').eq('active', true).order('created_at', { ascending: false }));
     if (error) toast(errMsg(error), 'err');
     setPosts(data || []);
     // Kontrolü yarım kalmış kendi ilanların varsa tekrar kontrol ettir
@@ -1484,13 +1737,13 @@ function Pazar({ me }) {
     if (!me) return go('/giris');
     if (!approved) return toast('İlan vermek için üyeliğinin onaylanması gerekiyor.', 'err');
     if (!isMusician) return toast('İlanı müzisyen üyeler verebilir. Profilinden "Müzisyen" seçebilirsin.', 'err');
-    setForm({ kind: POST_KINDS[0], title: '', my_role: (me.profile.instruments || []).join(', '), looking_for: [], genre: '', description: '' });
+    setForm({ kind: POST_KINDS[0], title: '', my_role: (me.profile.instruments || []).join(', '), looking_for: [], genre: '', description: '', contact_pref: 'whatsapp' });
     setTimeout(() => { const el = document.getElementById('ilan-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
   };
   const save = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return toast('İlana bir başlık yaz.', 'err');
-    const row = { kind: form.kind, title: form.title.trim(), my_role: form.my_role.trim(), looking_for: form.looking_for, genre: form.genre.trim(), description: form.description.trim() };
+    const row = { kind: form.kind, title: form.title.trim(), my_role: form.my_role.trim(), looking_for: form.looking_for, genre: form.genre.trim(), description: form.description.trim(), contact_pref: form.contact_pref || 'whatsapp' };
     const { data, error } = form.id ? await sb.from('market_posts').update(row).eq('id', form.id).select('id').single() : await sb.from('market_posts').insert(row).select('id').single();
     if (error) return toast(errMsg(error), 'err');
     setForm(null);
@@ -1535,7 +1788,7 @@ function Pazar({ me }) {
           <ol class="guide-steps">
             <li><b>İlanını ver</b><span>"+ İlan ver"e bas. Grup mu kuruyorsun, gruba mı katılmak istiyorsun seç; ne çaldığını, kimi aradığını ve tarzını yaz.</span></li>
             <li><b>Keşfet</b><span>"Aranan" filtresinden kendi enstrümanını seç, seni arayan grupları anında gör.</span></li>
-            <li><b>Tek tıkla yaz</b><span>Beğendiğin ilanda WhatsApp butonuna bas, ilan sahibine doğrudan yaz. Numaran kimseye gösterilmez.</span></li>
+            <li><b>Tek tıkla yaz</b><span>Beğendiğin ilanda "Mesaj gönder" ile site üzerinden özelden yaz ya da WhatsApp butonuna bas. Numaran sitede kimseye gösterilmez.</span></li>
           </ol>
           <div class="guide-foot">
             <span>İlan vermek için onaylı ve müzisyen üye olman gerekir · Aynı anda en fazla 3 ilan · İlanlar yayınlanmadan önce kontrol edilir</span>
@@ -1558,6 +1811,7 @@ function Pazar({ me }) {
             <div class="row">${INSTRUMENTS.map((r) => html`<${Pill} on=${form.looking_for.includes(r)} onClick=${() => toggleRole(r)}>${r}<//>`)}</div>
           </fieldset>
           <${Field} label="Açıklama"><textarea class="inp" rows="4" maxlength="1000" value=${form.description} onInput=${(e) => setForm({ ...form, description: e.target.value })} placeholder="Ne tür müzik yapmak istiyorsun, ne sıklıkla prova, hedefin ne (konser, eğlence, kayıt)…"></textarea><//>
+          <${ContactPrefField} value=${form.contact_pref} onChange=${(v) => setForm({ ...form, contact_pref: v })} />
           <div class="row">
             <button type="submit" class="btn btn-red">${form.id ? 'Kaydet' : 'İlanı yayınla'}</button>
             <button type="button" class="btn btn-ghost" onClick=${() => setForm(null)}>Vazgeç</button>
@@ -1594,9 +1848,7 @@ function Pazar({ me }) {
                   ${mine ? html`
                     <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setForm({ ...p })}>Düzenle</button>
                     <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>İlanı kapat</button>`
-                  : !me ? html`<a class="btn btn-sm btn-ghost" href="#/giris">İletişim için giriş yap</a>`
-                  : !approved ? html`<span class="muted small">İletişim bilgisi üyeliğin onaylanınca görünür.</span>`
-                  : html`<button type="button" class="btn btn-sm btn-wa" onClick=${() => openWhatsApp('market_contact', { p_post: p.id }, 'Merhaba, BÜMT Müzisyen Pazarı\'ndaki "' + p.title + '" ilanın için yazıyorum.', 'Bu üye telefon numarası eklememiş.')}>WhatsApp'tan yaz</button>`}
+                  : html`<${ContactButtons} me=${me} approved=${approved} pref=${p.contact_pref} size="sm" ctx=${{ kind: 'market', title: p.title, otherId: p.user_id, id: p.id }} />`}
                   ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
                 </div>
               </article>`;
@@ -1605,13 +1857,294 @@ function Pazar({ me }) {
     </div>`;
 }
 
-const MARKET_COLS = 'id,user_id,kind,title,my_role,looking_for,genre,description,display_name,avatar_url,active,created_at';
+const MARKET_COLS = 'id,user_id,kind,title,my_role,looking_for,genre,description,display_name,avatar_url,active,created_at,contact_pref';
 async function checkPost(id, isNew) {
   try {
     const { data: { session } } = await sb.auth.getSession();
     const r = await fetch('/api/pazar', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify({ id, is_new: isNew }) });
     return await r.json().catch(() => null);
   } catch (e) { return null; }
+}
+
+// ---------------------------------------------------------------------
+// Enstrüman pazarı (ikinci el satış ilanları)
+// ---------------------------------------------------------------------
+const EQ_CATS = ['Gitar', 'Bas Gitar', 'Davul & Perküsyon', 'Klavye & Piyano', 'Yaylı', 'Nefesli', 'Amfi & Efekt', 'Mikrofon & Ses', 'Aksesuar', 'Diğer'];
+const EQ_CONDS = [['sifir', 'Sıfır'], ['az_kullanilmis', 'Az kullanılmış'], ['ikinci_el', 'İkinci el']];
+const EQ_COLS = 'id,user_id,category,title,price,is_negotiable,condition,description,photos,sold,active,created_at,display_name,avatar_url,contact_pref';
+const condLabel = (c) => (EQ_CONDS.find((x) => x[0] === c) || [, 'İkinci el'])[1];
+const priceLabel = (p) => p.price == null ? 'Fiyat yok' : Number(p.price).toLocaleString('tr-TR') + ' TL';
+
+async function checkEquip(id, isNew) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch('/api/ekipman', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify({ id, is_new: isNew }) });
+    return await r.json().catch(() => null);
+  } catch (e) { return null; }
+}
+
+async function uploadEquipPhoto(file, uid) {
+  const blob = await compressImage(file, 1400);
+  const path = uid + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.jpg';
+  const { error } = await sb.storage.from('equipment').upload(path, blob, { contentType: 'image/jpeg', cacheControl: '3600' });
+  if (error) throw error;
+  return sb.storage.from('equipment').getPublicUrl(path).data.publicUrl;
+}
+
+function Ekipman({ me }) {
+  const [posts, setPosts] = useState(null);
+  const [cat, setCat] = useState('Tümü');
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [viewer, setViewer] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [guide, setGuide] = useState(false);
+  useEffect(() => { sb.from('settings').select('ekipman_guide').eq('id', 1).maybeSingle().then(({ data, error }) => setGuide(error || !data ? true : data.ekipman_guide !== false)); }, []);
+  const uid = me && me.user.id;
+  const approved = me && me.profile && me.profile.status === 'onaylandi';
+  const canModerate = me && me.can && me.can('uyeler');
+
+  const load = useCallback(async () => {
+    let { data, error } = await sb.from('equipment_posts').select(EQ_COLS + ',review,review_reason').eq('active', true).order('created_at', { ascending: false });
+    if (error) ({ data, error } = await sb.from('equipment_posts').select('id,user_id,category,title,price,is_negotiable,condition,description,photos,sold,active,created_at,display_name,avatar_url').eq('active', true).order('created_at', { ascending: false }));
+    if (error) toast(errMsg(error), 'err');
+    setPosts(data || []);
+    (data || []).filter((p) => p.review === 'kontrol' && p.user_id === uid).forEach((p) => checkEquip(p.id, false).then(() => setTimeout(load, 400)));
+  }, [uid]);
+  useEffect(() => { load(); }, [load]);
+  if (!posts) return html`<${Loading} />`;
+
+  const shown = posts.filter((p) => cat === 'Tümü' || p.category === cat);
+  const cats = ['Tümü', ...EQ_CATS.filter((c) => posts.some((p) => p.category === c))];
+
+  const newPost = () => {
+    if (!me) return go('/giris');
+    if (!approved) return toast('İlan vermek için üyeliğinin onaylanması gerekiyor.', 'err');
+    setForm({ category: EQ_CATS[0], title: '', price: '', is_negotiable: false, condition: 'ikinci_el', description: '', photos: [], contact_pref: 'whatsapp' });
+    setTimeout(() => { const el = document.getElementById('eq-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+  };
+  const onPhotos = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    const room = 4 - form.photos.length;
+    if (room <= 0) return toast('En fazla 4 fotoğraf ekleyebilirsin.', 'err');
+    setBusy(true);
+    try {
+      const urls = [];
+      for (const f of files.slice(0, room)) urls.push(await uploadEquipPhoto(f, uid));
+      setForm((cur) => ({ ...cur, photos: [...cur.photos, ...urls] }));
+    } catch (err) { toast(errMsg(err), 'err'); }
+    setBusy(false);
+  };
+  const save = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim()) return toast('İlana bir başlık yaz.', 'err');
+    if (!form.photos.length) return toast('En az bir fotoğraf ekle.', 'err');
+    const price = form.price === '' ? null : Math.max(0, Math.round(Number(String(form.price).replace(/[^\d]/g, '')) || 0));
+    const row = { category: form.category || EQ_CATS[0], title: form.title.trim(), price, is_negotiable: !!form.is_negotiable, condition: form.condition, description: form.description.trim(), photos: form.photos, contact_pref: form.contact_pref || 'whatsapp' };
+    const { data, error } = form.id ? await sb.from('equipment_posts').update(row).eq('id', form.id).select('id').single() : await sb.from('equipment_posts').insert(row).select('id').single();
+    if (error) return toast(errMsg(error), 'err');
+    setForm(null);
+    toast('İlanın kontrol ediliyor…');
+    const r = await checkEquip(data.id, !form.id);
+    if (r && r.status === 'incelemede') toast('İlanın uygunsuz ifade içeriyor olabilir; yönetim kontrol ettikten sonra yayınlanacak.', 'err');
+    else toast(form.id ? 'İlanın güncellendi.' : 'İlanın yayında!');
+    load();
+  };
+  const toggleSold = async (p) => {
+    const { error } = await sb.from('equipment_posts').update({ sold: !p.sold }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    load();
+  };
+  const close = async (p, moderate) => {
+    if (!confirm(moderate ? 'Bu ilan kaldırılsın mı?' : 'İlanını kaldırmak istiyor musun? Artık listede görünmez.')) return;
+    const { error } = await sb.from('equipment_posts').update({ active: false }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('İlan kaldırıldı.'); load();
+  };
+  const publish = async (p) => {
+    const { error } = await sb.from('equipment_posts').update({ review: '', review_reason: '' }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('İlan yayına alındı.'); load();
+  };
+
+  return html`
+    <div class="stack-lg">
+      <div class="row between">
+        <div class="stack">
+          <h1 class="h page-h">Enstrüman pazarı</h1>
+          <p class="muted measure">Enstrümanını ya da ekipmanını mı satıyorsun? İlan ver, fotoğrafını ve fiyatını koy. İlgilenen onaylı üyeler sana WhatsApp'tan ulaşır; numaran kimseye gösterilmez.</p>
+        </div>
+        <button type="button" class="btn btn-red" onClick=${newPost}>+ İlan ver</button>
+      </div>
+
+      ${guide && !form ? html`
+        <section class="guide guide-light guide-compact" aria-label="Enstrüman pazarı nasıl kullanılır">
+          <div class="guide-head">
+            <span class="guide-badge">Nasıl çalışır?</span>
+            <h2 class="h guide-h">Enstrümanını sat, ekipmanını değerlendir</h2>
+            <p class="guide-lead">Kullanmadığın enstrüman ya da ekipmanı kampüsteki müzisyenlere sat.</p>
+          </div>
+          <ol class="guide-steps">
+            <li><b>Fotoğraf + fiyat</b><span>"+ İlan ver"e bas; fotoğraflarını, fiyatını ve durumunu gir.</span></li>
+            <li><b>Keşfet</b><span>İlanlara göz at, kategoriye göre süz, detayına gir.</span></li>
+            <li><b>Tek tıkla yaz</b><span>Satıcıya site üzerinden özelden mesaj at ya da WhatsApp'tan ulaş.</span></li>
+          </ol>
+          <div class="guide-foot">
+            <span>Onaylı üyeler ilan verebilir · En fazla 5 ilan · İlanlar yayından önce kontrol edilir</span>
+            <button type="button" class="btn btn-red btn-sm" onClick=${newPost}>${posts.length ? 'Sen de ilanını ver →' : 'İlk ilanı sen ver →'}</button>
+          </div>
+        </section>` : null}
+
+      ${form ? html`
+        <form id="eq-form" class="card pad-lg stack" onSubmit=${save}>
+          <h2 class="h2">${form.id ? 'İlanı düzenle' : 'Yeni ilan'}</h2>
+          <div class="fgrid">
+            <${Field} label="Başlık"><input class="inp" required maxlength="80" value=${form.title} onInput=${(e) => setForm({ ...form, title: e.target.value })} placeholder="Örn. Yamaha Pacifica 112V Elektro Gitar" /><//>
+            <${Field} label="Kategori"><select class="inp" value=${form.category || EQ_CATS[0]} onChange=${(e) => setForm({ ...form, category: e.target.value })}>${EQ_CATS.map((c) => html`<option value=${c}>${c}</option>`)}</select><//>
+            <${Field} label="Fiyat (TL)" hint="Boş bırakırsan 'fiyat yok' görünür"><input class="inp" inputmode="numeric" value=${form.price} onInput=${(e) => setForm({ ...form, price: e.target.value.replace(/[^\d]/g, '') })} placeholder="Örn. 7500" /><//>
+          </div>
+          <div class="row chips">
+            <span class="strong small">Durum:</span>
+            ${EQ_CONDS.map(([v, l]) => html`<${Pill} on=${form.condition === v} onClick=${() => setForm({ ...form, condition: v })}>${l}<//>`)}
+            <label class="check"><input type="checkbox" checked=${form.is_negotiable} onChange=${(e) => setForm({ ...form, is_negotiable: e.target.checked })} /> Pazarlık payı var</label>
+          </div>
+          <${Field} label="Açıklama"><textarea class="inp" rows="4" maxlength="1500" value=${form.description} onInput=${(e) => setForm({ ...form, description: e.target.value })} placeholder="Markası, modeli, yaşı, kullanım durumu, varsa kusurları, kutusu/aksesuarları, görüşülecek yer…"></textarea><//>
+          <div class="stack-xs">
+            <span class="fld"><span>Fotoğraflar (en fazla 4)</span></span>
+            <div class="eq-upload">
+              ${form.photos.map((u, i) => html`<div class="eq-thumb"><img src=${u} alt="" /><button type="button" aria-label="Fotoğrafı sil" onClick=${() => setForm({ ...form, photos: form.photos.filter((_, j) => j !== i) })}>✕</button></div>`)}
+              ${form.photos.length < 4 ? html`<label class=${'eq-add' + (busy ? ' eq-add-busy' : '')}>${busy ? '…' : '+ Fotoğraf'}<input type="file" accept="image/*" multiple hidden onChange=${onPhotos} /></label>` : null}
+            </div>
+          </div>
+          <${ContactPrefField} value=${form.contact_pref} onChange=${(v) => setForm({ ...form, contact_pref: v })} />
+          <div class="row">
+            <button type="submit" class="btn btn-red" disabled=${busy}>${form.id ? 'Kaydet' : 'İlanı yayınla'}</button>
+            <button type="button" class="btn btn-ghost" onClick=${() => setForm(null)}>Vazgeç</button>
+          </div>
+        </form>` : null}
+
+      ${posts.length > 0 ? html`
+        <div class="row chips" role="group" aria-label="Kategoriye göre filtrele">
+          ${cats.map((c) => html`<${Pill} on=${cat === c} onClick=${() => setCat(c)}>${c}<//>`)}
+        </div>` : null}
+
+      ${shown.length === 0 ? html`<div class="locked"><h2 class="h2">Henüz ilan yok</h2><p class="muted">İlk ilanı sen ver!</p></div>` : html`
+        <div class="eq-grid">
+          ${shown.map((p) => {
+            const mine = p.user_id === uid;
+            const hidden = p.review === 'incelemede' || p.review === 'kontrol';
+            const cover = (p.photos || [])[0];
+            return html`
+              <article class=${'eq-card eq-click' + (hidden ? ' post-hidden' : '') + (p.sold ? ' eq-sold' : '')} onClick=${(e) => { if (e.target.closest('.post-actions') || e.target.closest('a') || e.target.closest('button')) return; setDetail(p); }}>
+                <div class="eq-cover" role="button" tabindex="0" onClick=${() => setDetail(p)} onKeyDown=${(e) => { if (e.key === 'Enter') setDetail(p); }} aria-label=${p.title + ' ilanını aç'}>
+                  ${cover ? html`<img src=${cover} alt=${p.title} loading="lazy" />` : html`<span class="eq-noimg">Fotoğraf yok</span>`}
+                  ${p.sold ? html`<span class="eq-sold-tag">Satıldı</span>` : null}
+                  ${(p.photos || []).length > 1 ? html`<span class="eq-count">📷 ${p.photos.length}</span>` : null}
+                </div>
+                <div class="eq-body">
+                  ${hidden ? html`<div class="post-flag">${p.review === 'kontrol' ? 'Kontrol ediliyor…' : mine ? 'İncelemede — yönetim onaylayınca yayınlanacak' : '⚠️ Gizlendi: ' + (p.review_reason || 'uygunsuz olabilir')}
+                    ${canModerate && !mine && p.review === 'incelemede' ? html` <button type="button" class="link-btn" onClick=${() => publish(p)}>Yayına al</button>` : null}</div>` : null}
+                  <div class="row between"><span class="eq-price">${priceLabel(p)}</span><span class="tag tag-cream">${condLabel(p.condition)}</span></div>
+                  <h3 class="eq-title">${p.title}</h3>
+                  <div class="row-sm">${p.category ? html`<span class="tag tag-dark">${p.category}</span>` : null}${p.is_negotiable ? html`<span class="muted small">Pazarlık payı var</span>` : null}</div>
+                  ${p.description ? html`<p class="eq-desc">${p.description}</p>` : null}
+                  <div class="row nowrap eq-seller">
+                    <${Avatar} url=${p.avatar_url} name=${p.display_name} size=${34} />
+                    <span class="small">${approved ? html`<a href=${'#/uye/' + p.user_id}><b>${p.display_name}</b></a>` : html`<b>${p.display_name}</b>`} <${UserTags} uid=${p.user_id} /></span>
+                  </div>
+                  <div class="row post-actions">
+                    ${mine ? html`
+                      <button type="button" class="btn btn-sm btn-dark" onClick=${() => toggleSold(p)}>${p.sold ? 'Satışta' : 'Satıldı'}</button>
+                      <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setForm({ ...p, price: p.price == null ? '' : String(p.price) })}>Düzenle</button>
+                      <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>Kaldır</button>`
+                    : html`<${ContactButtons} me=${me} approved=${approved} pref=${p.contact_pref} size="sm" ctx=${{ kind: 'equipment', title: p.title, otherId: p.user_id, id: p.id }} />`}
+                    ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
+                  </div>
+                </div>
+              </article>`;
+          })}
+        </div>`}
+      ${detail ? html`<${EqDetail} p=${detail} me=${me} approved=${approved} canModerate=${canModerate} onClose=${() => setDetail(null)} onEdit=${(pp) => { setDetail(null); setForm({ ...pp, price: pp.price == null ? '' : String(pp.price) }); setTimeout(() => { const el = document.getElementById('eq-form'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 50); }} onSold=${async (pp) => { await toggleSold(pp); setDetail((d) => d && { ...d, sold: !pp.sold }); }} onRemove=${async (pp) => { await close(pp, pp.user_id !== uid); setDetail(null); }} onPublish=${async (pp) => { await publish(pp); setDetail((d) => d && { ...d, review: '' }); }} />` : null}
+      ${viewer ? html`<${EqViewer} photos=${viewer.photos} start=${viewer.i} onClose=${() => setViewer(null)} />` : null}
+    </div>`;
+}
+
+function EqDetail({ p, me, approved, canModerate, onClose, onEdit, onSold, onRemove, onPublish }) {
+  const [i, setI] = useState(0);
+  const [zoom, setZoom] = useState(false);
+  const [school, setSchool] = useState(null);
+  useEffect(() => { if (!approved) return; sb.rpc('member_card', { p_id: p.user_id }).then(({ data }) => { if (data && data[0]) setSchool(data[0]); }).catch(() => {}); }, [p.user_id]);
+  const photos = (p.photos || []).filter(Boolean);
+  const mine = me && p.user_id === me.user.id;
+  const hidden = p.review === 'incelemede' || p.review === 'kontrol';
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') { zoom ? setZoom(false) : onClose(); }
+      if (photos.length > 1 && e.key === 'ArrowRight') setI((x) => (x + 1) % photos.length);
+      if (photos.length > 1 && e.key === 'ArrowLeft') setI((x) => (x - 1 + photos.length) % photos.length); };
+    window.addEventListener('keydown', k);
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', k); document.body.style.overflow = ''; };
+  }, [zoom]);
+  return html`
+    <div class="sheet" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="sheet-card" role="dialog" aria-modal="true" aria-label=${p.title}>
+        <button class="sheet-close" aria-label="Kapat" onClick=${onClose}>✕</button>
+        <div class="sheet-grid">
+          <div class="sheet-gallery">
+            <div class="sheet-main" onClick=${() => photos.length && setZoom(true)}>
+              ${photos.length ? html`<img src=${photos[i]} alt=${p.title} />` : html`<span class="eq-noimg">Fotoğraf yok</span>`}
+              ${p.sold ? html`<span class="eq-sold-tag">Satıldı</span>` : null}
+              ${photos.length > 1 ? html`
+                <button class="lb-nav lb-prev" aria-label="Önceki" onClick=${(e) => { e.stopPropagation(); setI((i - 1 + photos.length) % photos.length); }}>‹</button>
+                <button class="lb-nav lb-next" aria-label="Sonraki" onClick=${(e) => { e.stopPropagation(); setI((i + 1) % photos.length); }}>›</button>
+                <span class="eq-count">${i + 1} / ${photos.length}</span>` : null}
+              ${photos.length ? html`<span class="sheet-zoomhint">🔍 Büyütmek için dokun</span>` : null}
+            </div>
+            ${photos.length > 1 ? html`<div class="sheet-thumbs">${photos.map((u, j) => html`<button class=${'sheet-thumb' + (j === i ? ' on' : '')} onClick=${() => setI(j)}><img src=${u} alt="" /></button>`)}</div>` : null}
+          </div>
+          <div class="sheet-info">
+            ${hidden ? html`<div class="post-flag">${p.review === 'kontrol' ? 'Kontrol ediliyor…' : mine ? 'İncelemede — yönetim onaylayınca yayınlanacak' : '⚠️ Gizlendi: ' + (p.review_reason || 'uygunsuz olabilir')}</div>` : null}
+            <span class="sheet-price">${priceLabel(p)}</span>
+            ${p.is_negotiable ? html`<span class="muted small">Pazarlık payı var</span>` : null}
+            <h2 class="h sheet-title">${p.title}</h2>
+            <div class="row-sm">${p.category ? html`<span class="tag tag-dark">${p.category}</span>` : null}<span class="tag tag-cream">${condLabel(p.condition)}</span>${p.sold ? html`<span class="tag tag-red">Satıldı</span>` : null}</div>
+            <div class="row nowrap eq-seller">
+              <${Avatar} url=${p.avatar_url} name=${p.display_name} size=${40} />
+              <span class="small stack-xs"><span>${approved ? html`<a href=${'#/uye/' + p.user_id} onClick=${onClose}><b>${p.display_name}</b></a>` : html`<b>${p.display_name}</b>`} <${UserTags} uid=${p.user_id} /></span>${school ? html`<${SchoolLine} p=${school} cls="muted" />` : null}<span class="muted">${fmtLong(String(p.created_at).slice(0, 10))}</span></span>
+            </div>
+            ${p.description ? html`<div class="sheet-desc">${p.description}</div>` : html`<p class="muted">Açıklama eklenmemiş.</p>`}
+            <div class="sheet-actions">
+              ${mine ? html`
+                <button type="button" class="btn btn-dark" onClick=${() => onSold(p)}>${p.sold ? 'Tekrar satışa al' : 'Satıldı olarak işaretle'}</button>
+                <button type="button" class="btn btn-ghost" onClick=${() => onEdit(p)}>Düzenle</button>
+                <button type="button" class="btn btn-ghost" onClick=${() => onRemove(p)}>İlanı kaldır</button>`
+              : html`<${ContactButtons} me=${me} approved=${approved} pref=${p.contact_pref} ctx=${{ kind: 'equipment', title: p.title, otherId: p.user_id, id: p.id }} />`}
+              ${canModerate && !mine ? html`<button type="button" class="btn btn-ghost" onClick=${() => onRemove(p)}>Kaldır</button>${p.review === 'incelemede' ? html`<button type="button" class="btn btn-ghost" onClick=${() => onPublish(p)}>Yayına al</button>` : null}` : null}
+            </div>
+          </div>
+        </div>
+      </div>
+      ${zoom ? html`<${EqViewer} photos=${photos} start=${i} onClose=${() => setZoom(false)} />` : null}
+    </div>`;
+}
+
+function EqViewer({ photos, start, onClose }) {
+  const [i, setI] = useState(start || 0);
+  const list = photos || [];
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose(); if (e.key === 'ArrowRight') setI((x) => (x + 1) % list.length); if (e.key === 'ArrowLeft') setI((x) => (x - 1 + list.length) % list.length); };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, []);
+  return html`
+    <div class="lightbox" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <button class="lb-close" aria-label="Kapat" onClick=${onClose}>✕</button>
+      ${list.length > 1 ? html`<button class="lb-nav lb-prev" aria-label="Önceki" onClick=${() => setI((i - 1 + list.length) % list.length)}>‹</button>` : null}
+      <img class="lb-img" src=${list[i]} alt="" />
+      ${list.length > 1 ? html`<button class="lb-nav lb-next" aria-label="Sonraki" onClick=${() => setI((i + 1) % list.length)}>›</button>` : null}
+      ${list.length > 1 ? html`<span class="lb-count">${i + 1} / ${list.length}</span>` : null}
+    </div>`;
 }
 
 function Uye({ id, me }) {
@@ -1729,6 +2262,9 @@ function App() {
   const [me, setMe] = useState(undefined);
   const [route, setRoute] = useState(parseRoute());
   const refresh = useCallback(async () => { try { setMe(await loadMe()); } catch (e) { setMe(null); } }, []);
+  const [unread, setUnread] = useState(0);
+  const pollUnread = useCallback(async () => { if (!me || !me.profile || me.profile.status !== 'onaylandi') { setUnread(0); return; } try { const { data } = await sb.rpc('dm_unread'); setUnread(data || 0); } catch (e) {} }, [me]);
+  useEffect(() => { pollUnread(); const t = setInterval(pollUnread, 15000); return () => clearInterval(t); }, [pollUnread]);
   useEffect(() => {
     refresh();
     const { data: { subscription } } = sb.auth.onAuthStateChange((ev) => {
@@ -1746,6 +2282,8 @@ function App() {
   else if (p === 'kurslar') page = html`<${Kurslar} me=${me} />`;
   else if (p === 'dinletiler') page = html`<${Dinletiler} me=${me} />`;
   else if (p === 'onay') page = html`<${OnayPage} me=${me} refresh=${refresh} />`;
+  else if (p === 'ekipman') page = html`<${Ekipman} me=${me} />`;
+  else if (p === 'mesajlar') page = html`<${Mesajlar} me=${me} threadId=${route.param} onRead=${pollUnread} />`;
   else if (p === 'etkinlik') page = html`<${EventPage} id=${route.param} />`;
   else if (p === 'form') page = html`<${FormPage} id=${route.param} me=${me} />`;
   else if (p === 'giris') page = html`<${Giris} me=${me} />`;
@@ -1761,9 +2299,9 @@ function App() {
   else page = html`<div class="stack"><h1 class="h page-h">Sayfa bulunamadı</h1><a class="btn btn-ghost self-start" href="#/">Ana sayfa</a></div>`;
 
   return html`
-    <${Header} me=${me} route=${route} />
+    <${Header} me=${me} route=${route} unread=${unread} />
     <${StatusBanner} me=${me} />
-    <main class="wrap main" id="icerik">${me === undefined && ['prova', 'kurslar', 'dinletiler', 'profil', 'egitmen', 'pazar', 'yoklama', 'uye'].includes(p) ? html`<${Loading} />` : page}</main>
+    <main class="wrap main" id="icerik">${me === undefined && ['prova', 'kurslar', 'dinletiler', 'profil', 'egitmen', 'pazar', 'ekipman', 'mesajlar', 'yoklama', 'uye'].includes(p) ? html`<${Loading} />` : page}</main>
     <footer class="ftr">
       <div class="wrap ftr-in">
         <div class="row nowrap"><span class="ftr-logo"><img src="/assets/logo.png" alt="" /></span><b>Başkent Üniversitesi Müzik Topluluğu</b></div>
@@ -1771,6 +2309,7 @@ function App() {
       </div>
     </footer>
     <${BottomNav} route=${route} />
+    ${route.page !== 'mesajlar' ? html`<${ChatWidget} me=${me} unread=${unread} onRead=${pollUnread} />` : null}
     <${Toaster} />`;
 }
 

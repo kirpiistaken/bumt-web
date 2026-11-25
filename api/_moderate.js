@@ -114,3 +114,60 @@ async function moderatePost(id, base, isNew) {
 }
 
 module.exports = { moderatePost, loadPost, wordCheck, normalize };
+
+// ---- Enstrüman pazarı (ikinci el satış ilanları) ----
+const COND = { sifir: 'Sıfır', az_kullanilmis: 'Az kullanılmış', ikinci_el: 'İkinci el' };
+const eqText = (p) => [p.category, p.title, p.description].filter(Boolean).join('\n');
+const eqPrice = (p) => (p.price == null ? 'Belirtilmemiş' : Number(p.price).toLocaleString('tr-TR') + ' TL') + (p.is_negotiable ? ' (pazarlık payı var)' : '');
+
+async function loadEquipment(filter) {
+  const r = await sb('/rest/v1/equipment_posts?select=*,profiles(full_name,student_no,contact_email)&' + filter);
+  return r.ok && Array.isArray(r.data) ? r.data[0] : null;
+}
+
+function eqMail(p, base, name, isNew) {
+  const flagged = p.review === 'incelemede';
+  const link = (d) => base + '/api/ekipman?token=' + p.review_token + '&d=' + d;
+  const who = p.profiles || {};
+  const photos = (p.photos || []).filter(Boolean);
+  return mailLayout(flagged ? '⚠️ Uygunsuz olabilecek enstrüman ilanı' : (isNew ? 'Enstrüman pazarına yeni ilan' : 'Enstrüman pazarında ilan düzenlendi'), `
+    <p style="margin:0 0 16px">Merhaba${name ? ' ' + esc(name) : ''}, ${flagged
+      ? '<b>otomatik kontrol bu ilanı uygunsuz olabilir diye işaretledi ve yayından gizledi.</b> Bakıp karar ver.'
+      : 'enstrüman pazarına bir ilan ' + (isNew ? 'eklendi' : 'düzenlendi') + '. Otomatik metin kontrolünden geçti ve yayında. Fotoğrafları da göz at; sorun görürsen tek tıkla kaldırabilirsin.'}</p>
+    ${flagged && p.review_reason ? `<p style="margin:0 0 16px;padding:10px 12px;background:#FBE3DF;border-radius:8px"><b>Sebep:</b> ${esc(p.review_reason)}</p>` : ''}
+    <table style="border-collapse:collapse;margin-bottom:16px">
+      ${row('Üye', esc((who.full_name || '') + (who.student_no ? ' (' + who.student_no + ')' : '')))}
+      ${row('Kategori', esc(p.category))}
+      ${row('Başlık', esc(p.title))}
+      ${row('Fiyat', esc(eqPrice(p)))}
+      ${row('Durum', esc(COND[p.condition] || p.condition))}
+    </table>
+    ${p.description ? `<div style="white-space:pre-line;border-left:3px solid #E3DACA;padding:4px 0 4px 12px;margin:0 0 16px">${esc(p.description)}</div>` : ''}
+    ${photos.length ? '<div style="margin:0 0 16px">' + photos.map((u) => `<a href="${esc(u)}"><img src="${esc(u)}" alt="" style="max-width:150px;border-radius:8px;margin:0 6px 6px 0;border:1px solid #E3DACA"></a>`).join('') + '</div>' : ''}
+    <div style="margin:12px 0 16px">${flagged ? btn(link('yayinla'), 'Sorun yok, yayına al', '#1F8A4C') : ''}${btn(link('kaldir'), 'İlanı kaldır', '#D7301F')}</div>
+    <p style="margin:16px 0 0;color:#5E5648;font-size:13px">Tüm ilanlar: ${esc(base)}/#/ekipman</p>`);
+}
+
+async function moderateEquipment(id, base, isNew) {
+  const p = await loadEquipment('id=eq.' + id);
+  if (!p) return { error: 'İlan bulunamadı.' };
+  if (p.review !== 'kontrol') return { status: p.review === 'incelemede' ? 'incelemede' : 'yayinda', already: true };
+  const text = eqText(p);
+  let reason = wordCheck(text);
+  let ai = { skipped: true };
+  if (!reason) { ai = await aiCheck(text); if (ai.flagged) reason = 'Yapay zekâ kontrolü: ' + (ai.reason || 'uygunsuz içerik'); }
+  const review = reason ? 'incelemede' : '';
+  await sb('/rest/v1/equipment_posts?id=eq.' + p.id, { method: 'PATCH', body: JSON.stringify({ review, review_reason: reason }) });
+  const fresh = { ...p, review, review_reason: reason };
+  if (isNew || reason) {
+    const list = await moderators();
+    for (const m of list) {
+      await sendMail({ to: m.contact_email, subject: (reason ? '⚠️ İncele: ' : 'BÜMT enstrüman: ') + p.title, html: eqMail(fresh, base, m.full_name, isNew) });
+    }
+  }
+  return { status: reason ? 'incelemede' : 'yayinda', ai: ai.skipped ? 'kapali' : (ai.error ? 'hata' : 'ok') };
+}
+
+module.exports.moderateEquipment = moderateEquipment;
+module.exports.loadEquipment = loadEquipment;
+
