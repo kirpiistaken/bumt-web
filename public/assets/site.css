@@ -649,3 +649,4 @@ body { overflow-x: clip; }
 .sw-on { background:#2E9E5B; }
 .sw-on span { left:22px; }
 .sw:disabled { opacity:.6; }
+.msg-bubble.pending { opacity:.6; }

@@ -21,12 +21,18 @@ function mailNote(m) {
   if (preview || m === 'no_key') toast(MAIL_NOTES[m] || ('📧 ' + m), m === 'sent' || m === 'throttled' ? undefined : 'err');
 }
 async function sendMessage(thread_id, body) {
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const r = await fetch('/api/mesaj', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify({ thread_id, body }) });
-    const d = await r.json().catch(() => ({}));
-    return r.ok ? d : { error: d.error || 'Mesaj gönderilemedi.' };
-  } catch (e) { return { error: 'Mesaj gönderilemedi.' }; }
+  // Mesaj doğrudan veritabanına yazılır (hızlı); e-posta bildirimi arkada ayrıca tetiklenir, bekletmez.
+  const { error } = await sb.rpc('dm_send', { p_thread: thread_id, p_body: body });
+  if (error) return { error: errMsg(error) };
+  (async () => {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const r = await fetch('/api/mesaj', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify({ thread_id, notify_only: true }) });
+      const d = await r.json().catch(() => ({}));
+      mailNote(d.mail);
+    } catch (e) { /* bildirim gitmese de mesaj gitti */ }
+  })();
+  return { ok: true };
 }
 async function startChat(other, ctype, cid, title) {
   if (!other) return toast('Bu kişiyle site üzerinden mesajlaşma şu an yapılamıyor.', 'err');
@@ -99,10 +105,10 @@ function ChatWidget({ me, unread, onRead }) {
   const cur = (threads || []).find((t) => t.thread_id === active);
   const send = async (e) => {
     e.preventDefault(); const b = text.trim(); if (!b || !active) return;
-    setSending(true); setText('');
-    const r = await sendMessage(active, b); setSending(false);
-    if (r.error) { setText(b); return toast(r.error, 'err'); }
-    mailNote(r.mail);
+    setText(''); const tmp = { id: 'tmp' + Date.now(), sender_id: uid, body: b, created_at: new Date().toISOString(), pending: true };
+    setMsgs((m) => [...m, tmp]);
+    const r = await sendMessage(active, b);
+    if (r.error) { setMsgs((m) => m.filter((x) => x !== tmp)); setText(b); return toast(r.error, 'err'); }
     loadMsgs(active);
   };
 
@@ -130,7 +136,7 @@ function ChatWidget({ me, unread, onRead }) {
             </div>`
           : html`
             <div class="cw-body">
-              ${msgs.map((m) => html`<div class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
+              ${msgs.map((m) => html`<div key=${m.id} class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs') + (m.pending ? ' pending' : '')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
               <div ref=${endRef}></div>
             </div>
             <form class="cw-input" onSubmit=${send}>
@@ -187,11 +193,10 @@ function Mesajlar({ me, threadId, onRead }) {
     e.preventDefault();
     const b = text.trim();
     if (!b || !active) return;
-    setSending(true); setText('');
+    setText(''); const tmp = { id: 'tmp' + Date.now(), sender_id: uid, body: b, created_at: new Date().toISOString(), pending: true };
+    setMsgs((m) => [...m, tmp]);
     const r = await sendMessage(active, b);
-    setSending(false);
-    if (r.error) { setText(b); return toast(r.error, 'err'); }
-    mailNote(r.mail);
+    if (r.error) { setMsgs((m) => m.filter((x) => x !== tmp)); setText(b); return toast(r.error, 'err'); }
     loadMsgs(active);
   };
 
@@ -221,7 +226,7 @@ function Mesajlar({ me, threadId, onRead }) {
             ${cur ? html`<a class="msg-head-who" href=${'#/uye/' + cur.other_id}><${Avatar} url=${cur.other_avatar} name=${cur.other_name} size=${36} /><div class="stack-0"><b>${cur.other_name}</b>${cur.context_title ? html`<span class="muted small">${cur.context_title}</span>` : null}</div></a>` : null}
           </div>
           <div class="msg-body">
-            ${msgs.map((m) => html`<div class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
+            ${msgs.map((m) => html`<div key=${m.id} class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs') + (m.pending ? ' pending' : '')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
             <div ref=${endRef}></div>
           </div>
           <form class="msg-input" onSubmit=${send}>

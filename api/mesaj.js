@@ -13,9 +13,10 @@ module.exports = async (req, res) => {
   const caller = await getCaller(req);
   if (caller.error) return json(res, 401, { error: caller.error });
   const thread_id = String(body.thread_id || '');
+  const notifyOnly = !!body.notify_only; // mesaj zaten dm_send ile yazıldı, sadece bildirim
   const text = String(body.body || '').trim();
   if (!UUID.test(thread_id)) return json(res, 400, { error: 'Konuşma bulunamadı.' });
-  if (!text) return json(res, 400, { error: 'Boş mesaj gönderilemez.' });
+  if (!notifyOnly && !text) return json(res, 400, { error: 'Boş mesaj gönderilemez.' });
 
   const tr = await sb('/rest/v1/dm_threads?select=id,u_lo,u_hi,context_title&id=eq.' + thread_id);
   const t = tr.ok && Array.isArray(tr.data) ? tr.data[0] : null;
@@ -27,15 +28,19 @@ module.exports = async (req, res) => {
   if (!mp || mp.status !== 'onaylandi') return json(res, 403, { error: 'Mesaj göndermek için üyeliğin onaylı olmalı.' });
   const other = caller.id === t.u_lo ? t.u_hi : t.u_lo;
 
-  // Bildirim kısıtı: bu threadde benden okunmamış mesaj yoksa VEYA son okunmamışım 10 dk'dan eskiyse bildir
-  const lastUnread = await sb('/rest/v1/dm_messages?select=created_at&thread_id=eq.' + thread_id + '&sender_id=eq.' + caller.id + '&read_at=is.null&order=created_at.desc&limit=1');
-  const lu = lastUnread.ok && Array.isArray(lastUnread.data) ? lastUnread.data[0] : null;
+  // Bildirim kısıtı: (az önce yazılan hariç) benden okunmamış mesaj yoksa VEYA en yenisi 10 dk'dan eskiyse bildir
+  const lastUnread = await sb('/rest/v1/dm_messages?select=created_at&thread_id=eq.' + thread_id + '&sender_id=eq.' + caller.id + '&read_at=is.null&order=created_at.desc&limit=2');
+  const rows = lastUnread.ok && Array.isArray(lastUnread.data) ? lastUnread.data : [];
+  const lu = notifyOnly ? rows[1] : rows[0];
   const shouldNotify = !lu || (Date.now() - new Date(lu.created_at).getTime()) > 10 * 60 * 1000;
 
-  const ins = await sb('/rest/v1/dm_messages', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ thread_id, sender_id: caller.id, body: text.slice(0, 2000) }) });
-  if (!ins.ok) return json(res, 500, { error: 'Mesaj gönderilemedi.' });
-  const created = Array.isArray(ins.data) ? ins.data[0] : null;
-  await sb('/rest/v1/dm_threads?id=eq.' + thread_id, { method: 'PATCH', body: JSON.stringify({ last_message_at: new Date().toISOString() }) });
+  let created = null;
+  if (!notifyOnly) {
+    const ins = await sb('/rest/v1/dm_messages', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ thread_id, sender_id: caller.id, body: text.slice(0, 2000) }) });
+    if (!ins.ok) return json(res, 500, { error: 'Mesaj gönderilemedi.' });
+    created = Array.isArray(ins.data) ? ins.data[0] : null;
+    await sb('/rest/v1/dm_threads?id=eq.' + thread_id, { method: 'PATCH', body: JSON.stringify({ last_message_at: new Date().toISOString() }) });
+  }
 
   let mail = 'throttled';
   if (shouldNotify) {
