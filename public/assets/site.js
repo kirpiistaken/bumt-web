@@ -13,6 +13,13 @@ const parseRoute = () => {
 const go = (path) => { location.hash = path; };
 
 const MSG_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z';
+const MAIL_NOTES = { sent: '📧 Bildirim e-postası gönderildi.', throttled: '📧 E-posta atlandı: son 10 dk içinde zaten bildirim gitti (karşı taraf henüz okumadı).', no_email: '📧 E-posta gitmedi: karşı tarafın profilinde e-posta adresi yok.', off: '📧 E-posta gitmedi: karşı taraf bildirimleri kapatmış.', no_key: '📧 E-posta gitmedi: bu ortamda e-posta servisi (RESEND_API_KEY) tanımlı değil.', error: '📧 E-posta servisi hata verdi (Resend reddetti).' };
+function mailNote(m) {
+  // Test sitesinde her gönderimde e-posta durumunu göster; canlıda sadece servis kapalıysa
+  const preview = /vercel\.app$/.test(location.hostname);
+  if (!m) { if (preview) toast('📧 Sunucu e-posta durumu döndürmedi (eski sürüm?).', 'err'); return; }
+  if (preview || m === 'no_key') toast(MAIL_NOTES[m] || ('📧 ' + m), m === 'sent' || m === 'throttled' ? undefined : 'err');
+}
 async function sendMessage(thread_id, body) {
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -95,7 +102,7 @@ function ChatWidget({ me, unread, onRead }) {
     setSending(true); setText('');
     const r = await sendMessage(active, b); setSending(false);
     if (r.error) { setText(b); return toast(r.error, 'err'); }
-    if (r.mail === 'no_key') toast('Not: e-posta servisi bu ortamda kapalı, bildirim gitmedi.', 'err');
+    mailNote(r.mail);
     loadMsgs(active);
   };
 
@@ -184,7 +191,7 @@ function Mesajlar({ me, threadId, onRead }) {
     const r = await sendMessage(active, b);
     setSending(false);
     if (r.error) { setText(b); return toast(r.error, 'err'); }
-    if (r.mail === 'no_key') toast('Not: e-posta servisi bu ortamda kapalı, bildirim gitmedi.', 'err');
+    mailNote(r.mail);
     loadMsgs(active);
   };
 
