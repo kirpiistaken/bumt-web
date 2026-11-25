@@ -469,7 +469,7 @@ body { overflow-x: clip; }
 .nav-soon:hover { opacity: 1; }
 .nav-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; border: 1px solid rgba(244,234,213,.35); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .nav-on .nav-tag { border-color: rgba(255,255,255,.6); }
-.nav-hot:not(.nav-on) { box-shadow: inset 0 0 0 2px var(--red); }
+/* (Müzisyen pazarı vurgusu kaldırıldı: sadece aktif sayfa kırmızı) */
 .bnav-soon:not(.bnav-on) { opacity: .55; }
 .hero-pazar { display: inline-flex; align-items: center; gap: 10px; }
 .hero-soon { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; font-size: 13.5px; color: rgba(244,234,213,.7); }
