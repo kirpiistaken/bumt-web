@@ -303,7 +303,7 @@ const ICON = {
   pazar: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',
   ekipman: 'M20 7h-3V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zM9 5h6v2H9z'
 };
-const BNAV = [['', 'Ana Sayfa', 'home'], ['pazar', 'Pazar', 'pazar'], ['ekipman', 'Ekipman', 'ekipman'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler']];
+const BNAV = [['', 'Ana Sayfa', 'home'], ['pazar', 'Müzisyen', 'pazar'], ['ekipman', 'Enstrüman', 'ekipman'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler']];
 
 // Numarayı sitede göstermeden doğrudan WhatsApp'ı açar.
 // Pencere tıklama anında açılır (telefon tarayıcıları sonradan açılan pencereleri engeller), numara gelince WhatsApp'a yönlenir.
@@ -320,8 +320,10 @@ async function openWhatsApp(rpc, args, text, noPhoneMsg) {
 }
 
 function BottomNav({ route }) {
+  const ref = useRef(null);
+  useEffect(() => { const el = ref.current && ref.current.querySelector('.bnav-on'); if (el) el.scrollIntoView({ inline: 'nearest', block: 'nearest' }); }, [route.page]);
   return html`
-    <nav class="bnav" aria-label="Alt menü">
+    <nav class="bnav" aria-label="Alt menü" ref=${ref}>
       ${BNAV.map(([p, l, ic]) => html`
         <a href=${'#/' + p} class=${'bnav-a ' + (route.page === p ? 'bnav-on ' : '') + (SOON[p] ? 'bnav-soon' : '')} aria-current=${route.page === p ? 'page' : null}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${ICON[ic]} /></svg>

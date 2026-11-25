@@ -278,11 +278,13 @@ textarea.inp { resize: vertical; }
 
 @media (max-width: 860px) {
   .nav { display: none; }
-  .bnav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  .bnav { display: flex; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; gap: 2px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
     background: var(--ink); border-top: 2px solid var(--red); padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); }
   .bnav-a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; border-radius: 12px;
     color: #CFC6B4; text-decoration: none; font-size: 11px; font-weight: 600; letter-spacing: .01em; }
   .bnav-a:hover { color: #fff; }
+  .bnav::-webkit-scrollbar { display: none; }
+  .bnav-a { flex: 0 0 calc((100% - 8px) / 5.4); scroll-snap-align: start; white-space: nowrap; }
   .bnav-on, .bnav-on:hover { color: #fff; background: var(--red); }
   .main { padding-top: 24px; padding-bottom: 120px; }
   .ftr-in { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
