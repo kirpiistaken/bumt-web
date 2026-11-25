@@ -13,6 +13,14 @@ const parseRoute = () => {
 const go = (path) => { location.hash = path; };
 
 const MSG_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z';
+async function sendMessage(thread_id, body) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch('/api/mesaj', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify({ thread_id, body }) });
+    const d = await r.json().catch(() => ({}));
+    return r.ok ? d : { error: d.error || 'Mesaj gönderilemedi.' };
+  } catch (e) { return { error: 'Mesaj gönderilemedi.' }; }
+}
 async function startChat(other, ctype, cid, title) {
   if (!other) return toast('Bu kişiyle site üzerinden mesajlaşma şu an yapılamıyor.', 'err');
   const { data, error } = await sb.rpc('dm_start', { p_other: other, p_ctype: ctype || 'direct', p_cid: cid || null, p_title: title || '' });
@@ -53,6 +61,82 @@ const msgTime = (ts) => {
   if (d.toDateString() === now.toDateString()) return hm;
   return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) + ' ' + hm;
 };
+
+function ChatWidget({ me, unread, onRead }) {
+  const [open, setOpen] = useState(false);
+  const [threads, setThreads] = useState(null);
+  const [active, setActive] = useState(null);
+  const [msgs, setMsgs] = useState([]);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const uid = me && me.user.id;
+  const endRef = useRef(null);
+  if (!me || !me.profile || me.profile.is_staff || me.profile.status !== 'onaylandi') return null;
+
+  const loadThreads = useCallback(async () => { const { data } = await sb.rpc('my_threads'); setThreads(data || []); }, []);
+  const loadMsgs = useCallback(async (tid) => {
+    if (!tid) return;
+    const { data } = await sb.from('dm_messages').select('id,sender_id,body,created_at').eq('thread_id', tid).order('created_at');
+    setMsgs(data || []);
+    await sb.rpc('dm_mark_read', { p_thread: tid }); onRead && onRead(); loadThreads();
+  }, [loadThreads, onRead]);
+  useEffect(() => { if (open) loadThreads(); }, [open, loadThreads]);
+  useEffect(() => { if (open && active) loadMsgs(active); }, [open, active]);
+  useEffect(() => {
+    if (!open) return;
+    const t = setInterval(() => { active ? loadMsgs(active) : loadThreads(); }, 5000);
+    return () => clearInterval(t);
+  }, [open, active, loadMsgs, loadThreads]);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView(); }, [msgs.length]);
+
+  const cur = (threads || []).find((t) => t.thread_id === active);
+  const send = async (e) => {
+    e.preventDefault(); const b = text.trim(); if (!b || !active) return;
+    setSending(true); setText('');
+    const r = await sendMessage(active, b); setSending(false);
+    if (r.error) { setText(b); return toast(r.error, 'err'); }
+    loadMsgs(active);
+  };
+
+  return html`
+    <div class="cw">
+      ${open ? html`
+        <div class="cw-panel">
+          <div class="cw-head">
+            ${active ? html`<button type="button" class="cw-back" aria-label="Geri" onClick=${() => setActive(null)}>‹</button>` : null}
+            <b>${active && cur ? cur.other_name : 'Mesajlar'}</b>
+            <div class="cw-head-r">
+              <a class="cw-expand" href=${active ? '#/mesajlar/' + active : '#/mesajlar'} onClick=${() => setOpen(false)} aria-label="Tam ekran">⤢</a>
+              <button type="button" class="cw-x" aria-label="Kapat" onClick=${() => setOpen(false)}>✕</button>
+            </div>
+          </div>
+          ${!active ? html`
+            <div class="cw-threads">
+              ${threads === null ? html`<div class="pad muted small">Yükleniyor…</div>`
+                : threads.length === 0 ? html`<div class="pad muted small">Henüz mesajın yok. Bir ilandaki "Mesaj gönder" ile başlayabilirsin.</div>`
+                : threads.map((t) => html`
+                  <button type="button" class="cw-thread" onClick=${() => setActive(t.thread_id)}>
+                    <${Avatar} url=${t.other_avatar} name=${t.other_name} size=${38} />
+                    <span class="cw-thread-txt"><span class="cw-thread-top"><b>${t.other_name}</b>${t.unread ? html`<span class="msg-badge">${t.unread}</span>` : null}</span><span class="msg-thread-last">${t.last_sender === uid ? 'Sen: ' : ''}${t.last_body || '—'}</span></span>
+                  </button>`)}
+            </div>`
+          : html`
+            <div class="cw-body">
+              ${msgs.map((m) => html`<div class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
+              <div ref=${endRef}></div>
+            </div>
+            <form class="cw-input" onSubmit=${send}>
+              <input class="inp inp-sm" placeholder="Mesaj yaz…" value=${text} onInput=${(e) => setText(e.target.value)} maxlength="2000" />
+              <button type="submit" class="btn btn-red btn-sm" disabled=${sending || !text.trim()}>Gönder</button>
+            </form>`}
+        </div>` : null}
+      <button type="button" class="cw-fab" aria-label="Mesajlar" onClick=${() => setOpen(!open)}>
+        ${open ? html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`
+          : html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d=${MSG_ICON}/></svg>`}
+        ${!open && unread ? html`<span class="cw-badge">${unread > 9 ? '9+' : unread}</span>` : null}
+      </button>
+    </div>`;
+}
 
 function Mesajlar({ me, threadId, onRead }) {
   const [threads, setThreads] = useState(null);
@@ -96,9 +180,9 @@ function Mesajlar({ me, threadId, onRead }) {
     const b = text.trim();
     if (!b || !active) return;
     setSending(true); setText('');
-    const { error } = await sb.rpc('dm_send', { p_thread: active, p_body: b });
+    const r = await sendMessage(active, b);
     setSending(false);
-    if (error) { setText(b); return toast(errMsg(error), 'err'); }
+    if (r.error) { setText(b); return toast(r.error, 'err'); }
     loadMsgs(active);
   };
 
@@ -124,7 +208,7 @@ function Mesajlar({ me, threadId, onRead }) {
         ${!active ? html`<div class="msg-empty"><p class="muted">Soldan bir konuşma seç.</p></div>` : html`
           <div class="msg-head">
             <button type="button" class="msg-back" aria-label="Geri" onClick=${() => { setActive(null); location.hash = '#/mesajlar'; }}>‹</button>
-            ${cur ? html`<${Avatar} url=${cur.other_avatar} name=${cur.other_name} size=${36} /><div class="stack-0"><b>${cur.other_name}</b>${cur.context_title ? html`<span class="muted small">${cur.context_title}</span>` : null}</div>` : null}
+            ${cur ? html`<a class="msg-head-who" href=${'#/uye/' + cur.other_id}><${Avatar} url=${cur.other_avatar} name=${cur.other_name} size=${36} /><div class="stack-0"><b>${cur.other_name}</b>${cur.context_title ? html`<span class="muted small">${cur.context_title}</span>` : null}</div></a>` : null}
           </div>
           <div class="msg-body">
             ${msgs.map((m) => html`<div class=${'msg-bubble ' + (m.sender_id === uid ? 'mine' : 'theirs')}><span>${m.body}</span><time>${msgTime(m.created_at)}</time></div>`)}
@@ -1227,7 +1311,7 @@ function Kayit({ me }) {
           <${Field} label="Ad Soyad"><input class="inp" required autocomplete="name" value=${f.full_name} onInput=${set('full_name')} /><//>
           <${Field} label="Öğrenci numarası" hint=${f.student_no && !/^[0-9]{8}$/.test(f.student_no.replace(/\s+/g, '')) ? '⚠️ Öğrenci numarası 8 haneli olmalı (' + f.student_no.replace(/\D/g, '').length + '/8)' : '8 haneli öğrenci numaran · Giriş yaparken bunu kullanacaksın'}><input class=${'inp' + (f.student_no && !/^[0-9]{8}$/.test(f.student_no.replace(/\s+/g, '')) ? ' inp-bad' : '')} required inputmode="numeric" pattern="[0-9]{8}" maxlength="8" title="8 haneli öğrenci numaranı yaz" placeholder="ör. 22012345" value=${f.student_no} onInput=${(e) => setF({ ...f, student_no: e.target.value.replace(/\D/g, '').slice(0, 8) })} /><//>
           <${Field} label="Telefon (WhatsApp)"><input class="inp" type="tel" required autocomplete="tel" value=${f.phone} onInput=${set('phone')} placeholder="05xx xxx xx xx" /><//>
-          <${Field} label="E-posta" hint="Şifreni unutursan sıfırlama linki buraya gelir"><input class="inp" type="email" required autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
+          <${Field} label="Kişisel e-posta" hint="Gmail, Outlook gibi kişisel bir adres yaz; okul e-postanı DEĞİL. Şifre sıfırlama ve yeni mesaj bildirimleri buraya gelir."><input class="inp" type="email" required autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} placeholder="ornek@gmail.com" /><//>
           <${Field} label="Fakülte"><${FacultySelect} required value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>
           <${Field} label="Bölüm"><input class="inp" required value=${f.department} onInput=${set('department')} placeholder="ör. Bilgisayar Mühendisliği" /><//>
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
@@ -1266,7 +1350,7 @@ function Profil({ me, refresh }) {
     if (me === null) go('/giris');
     if (!me || !me.profile) return;
     const p = me.profile;
-    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, ...(HAS_FACULTY ? { faculty: p.faculty || '' } : {}), department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '' });
+    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, ...(HAS_FACULTY ? { faculty: p.faculty || '' } : {}), department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '', notify_dm: p.notify_dm !== false });
     loadMine();
   }, [me && me.user.id]);
 
@@ -1386,6 +1470,7 @@ function Profil({ me, refresh }) {
           <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
         </div>
         <${Field} label="Hakkımda" hint="Kısa bir tanıtım: ne çalıyorsun, hangi tarzları seviyorsun, neler yapmak istiyorsun…"><textarea class="inp" rows="3" maxlength="500" value=${f.bio} onInput=${set('bio')}></textarea><//>
+        ${'notify_dm' in f ? html`<label class="check"><input type="checkbox" checked=${f.notify_dm} onChange=${(e) => setF({ ...f, notify_dm: e.target.checked })} /> Biri bana site üzerinden mesaj gönderince e-posta ile haber ver</label>` : null}
         <fieldset class="fs"><legend>Toplulukta</legend>
           <div class="row">
             <${Pill} on=${f.member_type === 'dinleyici'} onClick=${() => setF({ ...f, member_type: 'dinleyici' })}>Dinleyici<//>
@@ -2183,6 +2268,7 @@ function App() {
       </div>
     </footer>
     <${BottomNav} route=${route} />
+    ${route.page !== 'mesajlar' ? html`<${ChatWidget} me=${me} unread=${unread} onRead=${pollUnread} />` : null}
     <${Toaster} />`;
 }
 
