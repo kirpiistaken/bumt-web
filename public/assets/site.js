@@ -122,7 +122,32 @@ function gateMessage(g) {
 // ---------------------------------------------------------------------
 // Ana sayfa
 // ---------------------------------------------------------------------
-function Home() {
+const WA_ICON = 'M20.5 3.5A11 11 0 0 0 3.2 17.1L2 22l5-1.3A11 11 0 1 0 20.5 3.5ZM12 20a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20Zm4.4-6c-.2-.1-1.4-.7-1.7-.8-.2-.1-.4-.1-.5.1l-.8.9c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a.9.9 0 0 0-.7.3 2.8 2.8 0 0 0-.9 2.1 4.9 4.9 0 0 0 1 2.6 11.2 11.2 0 0 0 4.3 3.8c1.6.7 2.2.7 3 .6a2.6 2.6 0 0 0 1.7-1.2 2.1 2.1 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3Z';
+function WaGroupCard({ me, compact }) {
+  const [link, setLink] = useState(null);
+  const approved = me && me.profile && me.profile.status === 'onaylandi';
+  useEffect(() => {
+    if (!approved) return;
+    sb.rpc('whatsapp_group_link').then(({ data, error }) => setLink(error ? '' : (data || '')));
+  }, [approved]);
+  if (!me || !me.profile || me.profile.is_staff) return null;
+  if (!approved) return compact ? null : html`
+    <div class="wa-card wa-card-wait">
+      <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d=${WA_ICON} /></svg>
+      <div><b>Topluluk WhatsApp grubu</b><span>Üyeliğin onaylandığında grubun katılım linki burada görünecek.</span></div>
+    </div>`;
+  if (!link) return null;
+  return html`
+    <a class=${'wa-card' + (compact ? ' wa-card-compact' : '')} href=${link} target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d=${WA_ICON} /></svg>
+      <div><b>Topluluk WhatsApp grubuna katıl</b><span>Duyurular, prova ve etkinlik haberleri ilk burada. Sadece üyelere özel.</span></div>
+      <span class="wa-go">Katıl →</span>
+    </a>`;
+}
+
+const isAnnouncement = (e) => /^duyuru$/i.test(String(e.tag || '').trim());
+
+function Home({ me }) {
   const [events, setEvents] = useState(null);
   useEffect(() => {
     sb.from('events').select('*').eq('published', true).order('sort').order('starts_on', { nullsFirst: false })
@@ -136,16 +161,19 @@ function Home() {
       <p class="hero-lead">Başkent Üniversitesi Müzik Topluluğu'na hoş geldin! Burası çalan, söyleyen, dinleyen ve müziği seven herkesin buluşma noktası. İlk akorunu yeni öğreniyor olsan da yıllardır sahnede olsan da burada sana yer var.</p>
       <p class="hero-sub">Üye ol, prova odasını ayır, enstrüman derslerine göz at ve etkinliklerimizden ilk sen haberdar ol.</p>
       <div class="hero-cta">
-        <a class="btn btn-red" href="#/prova">Prova odası rezervasyonu</a>
-        <a class="btn btn-cream" href="#/kurslar">Enstrüman kursları</a>
+        ${me ? html`<a class="btn btn-red" href="#/kurslar">Enstrüman kursları</a>` : html`<a class="btn btn-red" href="#/kayit">Hemen üye ol</a>`}
+        <a class="btn btn-cream" href="#/prova">Prova odası</a>
       </div>
     </section>
 
+    <${WaGroupCard} me=${me} compact=${true} />
+
     <section class="sec">
-      <div class="sec-head"><h2 class="h">Yaklaşan etkinlikler</h2></div>
+      <div class="sec-head"><h2 class="h">Yaklaşan etkinlikler ve duyurular</h2></div>
       ${events === null ? html`<${Loading} />` : events.length === 0 ? html`
         <p class="muted">Şu an duyurulmuş bir etkinlik yok. Takipte kal!</p>` : html`
-        <div class="cards">${events.map((e, i) => html`<${EventCard} e=${e} i=${i} />`)}</div>`}
+        ${events.filter(isAnnouncement).length ? html`<div class="notes">${events.filter(isAnnouncement).map((e) => html`<${NoticeCard} e=${e} />`)}</div>` : null}
+        ${events.filter((e) => !isAnnouncement(e)).length ? html`<div class="cards">${events.filter((e) => !isAnnouncement(e)).map((e, i) => html`<${EventCard} e=${e} i=${i} />`)}</div>` : null}`}
     </section>
 
     <${Social} />`;
@@ -211,6 +239,27 @@ function Social() {
 }
 
 const POSTER_COLORS = [['#D7301F', '#fff'], ['#141414', '#F4EAD5'], ['#F4EAD5', '#141414']];
+function NoticeCard({ e }) {
+  const href = e.form_id ? '#/form/' + e.form_id : e.cta_url;
+  const ext = !e.form_id && e.cta_url;
+  const when = e.starts_on ? fmtLong(e.starts_on) : (e.date_text || fmtLong(String(e.created_at || '').slice(0, 10)));
+  return html`
+    <article class="notice">
+      <div class="notice-side" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="26" height="26"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12" /></svg>
+      </div>
+      <div class="notice-body">
+        <div class="row-sm"><span class="tag tag-red">Duyuru</span><span class="muted small">${when}</span></div>
+        <h3 class="notice-title">${e.title}</h3>
+        ${e.description ? html`<p class="notice-text">${richText(e.description)}</p>` : null}
+        ${href || e.poster_url ? html`<div class="row-sm">
+          ${href ? html`<a class="btn btn-dark btn-sm" href=${href} target=${ext ? '_blank' : null} rel=${ext ? 'noopener' : null}>${e.cta_label || 'Detaylar'}</a>` : null}
+          ${e.poster_url ? html`<a class="btn btn-ghost btn-sm" href=${'#/etkinlik/' + e.id}>Görseli gör</a>` : null}
+        </div>` : null}
+      </div>
+    </article>`;
+}
+
 function EventCard({ e, i }) {
   const [bg, fg] = POSTER_COLORS[i % 3];
   const when = e.starts_on ? fmtLong(e.starts_on) : e.date_text;
@@ -336,7 +385,39 @@ function EventPage({ id }) {
 // ---------------------------------------------------------------------
 // Prova odası
 // ---------------------------------------------------------------------
+// Prova odası henüz açılmadı: üyelere "yakında" ekranı; prova yetkilileri gerçek sayfayı görür.
+const PROVA_SOON = true;
 function Prova({ me }) {
+  const staff = me && me.can && me.can('prova');
+  if (PROVA_SOON && !staff) return html`<${ProvaSoon} me=${me} />`;
+  return html`
+    ${PROVA_SOON ? html`<div class="admin-note">👀 Üyeler bu sayfada "Yakında" ekranını görüyor. Sen prova yetkin olduğu için asıl sayfayı görüyorsun.</div>` : null}
+    <${ProvaReal} me=${me} />`;
+}
+
+function ProvaSoon({ me }) {
+  return html`
+    <section class="soon">
+      <div class="soon-eq" aria-hidden="true">${Array.from({ length: 24 }, (_, i) => html`<span style=${'animation-delay:' + ((i * 137) % 900) / 1000 + 's'}></span>`)}</div>
+      <div class="soon-in">
+        <span class="soon-kicker">Çok yakında</span>
+        <h1 class="h soon-h">Prova odası<br /><span>kapılarını açıyor.</span></h1>
+        <p class="soon-lead">Grubunla çalacak bir yer mi arıyorsun? BÜMT prova odası çok yakında topluluk üyelerinin hizmetinde.</p>
+        <div class="soon-facts">
+          <div class="soon-fact"><b>Her hafta</b><span>Cuma günleri</span></div>
+          <div class="soon-fact"><b>2 saat</b><span>Grubuna özel prova</span></div>
+          <div class="soon-fact"><b>Üyelere</b><span>özel rezervasyon</span></div>
+        </div>
+        <p class="soon-note">Rezervasyon sistemi, kurallar ve tüm detaylar yakında burada ve Instagram'da duyurulacak.</p>
+        <div class="soon-cta">
+          ${me ? null : html`<a class="btn btn-red btn-lg" href="#/kayit">Şimdiden üye ol</a>`}
+          <a class="btn btn-lg soon-ig" href="https://www.instagram.com/baskentmt/" target="_blank" rel="noopener">@baskentmt'yi takip et</a>
+        </div>
+      </div>
+    </section>`;
+}
+
+function ProvaReal({ me }) {
   const [myRules, setMyRules] = useState(null);
   const [guestOk, setGuestOk] = useState(false);
   const [data, setData] = useState(null);
@@ -1058,6 +1139,8 @@ function Profil({ me, refresh }) {
         <div class="row-sm"><${UserTags} uid=${p.id} /><span class=${'tag ' + statusTag[0]}>${statusTag[1]}</span></div>
       </div>
 
+      <${WaGroupCard} me=${me} />
+
       <div class="card pad row photo-card">
         <${Avatar} url=${p.avatar_url} name=${p.full_name} size=${112} />
         <div class="stack">
@@ -1549,7 +1632,7 @@ function App() {
 
   const p = route.page;
   let page;
-  if (p === '') page = html`<${Home} />`;
+  if (p === '') page = html`<${Home} me=${me} />`;
   else if (p === 'prova') page = html`<${Prova} me=${me} />`;
   else if (p === 'kurslar') page = html`<${Kurslar} me=${me} />`;
   else if (p === 'dinletiler') page = html`<${Dinletiler} me=${me} />`;

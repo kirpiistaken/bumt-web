@@ -239,6 +239,7 @@ function Uyeler({ me }) {
 
   return html`
     <div class="stack">
+      <${WaGroupSetting} />
       <${TagManager} onChange=${load} />
       <div class="toolbar">
         <div class="tabs" role="tablist">
@@ -294,6 +295,30 @@ function MemberForm({ f, setF, showPhone }) {
     </div>`;
 }
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+
+function WaGroupSetting() {
+  const [v, setV] = useState(null);
+  const [saved, setSaved] = useState('');
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    sb.rpc('whatsapp_group_link').then(({ data, error }) => { if (error) { setMissing(true); setV(''); } else { setV(data || ''); setSaved(data || ''); } });
+  }, []);
+  if (v === null) return null;
+  const save = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.rpc('set_whatsapp_group', { p_link: v.trim() });
+    if (error) return toast(errMsg(error), 'err');
+    setSaved(v.trim()); toast(v.trim() ? 'WhatsApp linki kaydedildi; onaylı üyeler artık görebilir.' : 'WhatsApp linki kaldırıldı.');
+  };
+  return html`
+    <form class="panel pad stack-sm" onSubmit=${save}>
+      <div class="toolbar"><h2 class="h2">Topluluk WhatsApp grubu</h2>${saved ? html`<span class="badge badge-ok">Onaylı üyelere görünüyor</span>` : html`<span class="badge badge-no">Link yok</span>`}</div>
+      ${missing ? html`<p class="form-err">Bu özellik için 019_whatsapp_grubu.sql dosyasını Supabase'de çalıştır.</p>` : html`
+        <p class="muted small">WhatsApp'ta grup bilgisi → "Bağlantı ile gruba davet et" → bağlantıyı kopyala. Link sadece onaylı üyelere (Profilim ve ana sayfada) görünür. WhatsApp'ta linki sıfırlarsan yenisini buraya yapıştır.</p>
+        <div class="row nowrap-row"><input class="inp" placeholder="https://chat.whatsapp.com/…" aria-label="WhatsApp grup linki" value=${v} onInput=${(e) => setV(e.target.value)} />
+          <button type="submit" class="btn btn-dark" disabled=${v.trim() === saved}>Kaydet</button></div>`}
+    </form>`;
+}
 
 function TagManager({ onChange }) {
   const [tags, setTags] = useState(null);
@@ -1313,7 +1338,8 @@ function EtkinlikAdmin() {
   return html`
     <div class="stack">
       <${InstagramPosts} />
-      <div class="toolbar"><p class="muted small">Yayındaki etkinlikler ana sayfada "Sıra" numarasına göre listelenir.</p><button type="button" class="btn btn-red" onClick=${() => setEdit({})}>Yeni etkinlik</button></div>
+      <div class="toolbar"><p class="muted small">Yayındaki etkinlikler ve duyurular ana sayfada "Sıra" numarasına göre listelenir. Etiketi "Duyuru" olanlar afişsiz duyuru kartı olarak en üstte görünür.</p>
+        <div class="row"><button type="button" class="btn btn-dark" onClick=${() => setEdit({ tag: 'Duyuru' })}>Yeni duyuru</button><button type="button" class="btn btn-red" onClick=${() => setEdit({})}>Yeni etkinlik</button></div></div>
       ${list.length === 0 ? html`<${Empty}>Henüz etkinlik yok.<//>` : html`
         <div class="ev-list">
           ${list.map((e) => html`
@@ -1371,7 +1397,7 @@ function EventEdit({ e, forms, onClose, onSaved }) {
     onSaved();
   };
   return html`
-    <${Modal} title=${e.id ? 'Etkinliği düzenle' : 'Yeni etkinlik'} wide=${true} onClose=${onClose}>
+    <${Modal} title=${e.id ? 'Düzenle: ' + e.title : (e.tag === 'Duyuru' ? 'Yeni duyuru' : 'Yeni etkinlik')} wide=${true} onClose=${onClose}>
       <form class="stack" onSubmit=${save}>
         <div class="poster-row">
           <div class="poster-prev">${f.poster_url ? html`<img src=${f.poster_url} alt="Afiş önizleme" />` : html`<span>Afiş yok</span>`}</div>
@@ -1383,7 +1409,7 @@ function EventEdit({ e, forms, onClose, onSaved }) {
         </div>
         <div class="fgrid">
           <${Field} label="Başlık"><input class="inp" required value=${f.title} onInput=${set('title')} /><//>
-          <${Field} label="Etiket" hint="Festival, Open Mic, Konser…"><input class="inp" value=${f.tag} onInput=${set('tag')} /><//>
+          <${Field} label="Etiket" hint="Festival, Open Mic, Konser… Duyuru yapmak için: Duyuru"><input class="inp" list="ev-tags" value=${f.tag} onInput=${set('tag')} /><datalist id="ev-tags"><option value="Duyuru" /><option value="Konser" /><option value="Open Mic" /><option value="Festival" /><option value="Parti" /><option value="Atölye" /></datalist><//>
           <${Field} label="Tarih" hint="Boş bırakırsan aşağıdaki metin görünür"><input class="inp" type="date" value=${f.starts_on} onInput=${set('starts_on')} /><//>
           <${Field} label="Tarih metni"><input class="inp" value=${f.date_text} onInput=${set('date_text')} placeholder="Örn. 14 Mart, 20:00" /><//>
           <${Field} label="Yer"><input class="inp" value=${f.venue} onInput=${set('venue')} placeholder="Örn. Harlem Performance, Kızılay" /><//>
