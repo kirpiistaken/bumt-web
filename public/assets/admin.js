@@ -200,6 +200,7 @@ function Uyeler({ me }) {
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState(null);
 
   const load = useCallback(async () => {
     let { data, error } = await sb.from('profiles').select(PROFILE_COLS + ',school_verified_at, roles(name)').eq('is_staff', false).order('created_at', { ascending: false });
@@ -262,7 +263,7 @@ function Uyeler({ me }) {
           <tbody>
             ${shown.map((m) => html`
               <tr>
-                <td><div class="row nowrap-row"><${Avatar} url=${m.avatar_url} name=${m.full_name} size=${36} /><div><b>${m.full_name || '—'}</b> <${UserTags} uid=${m.id} /><${SchoolLine} p=${m} cls="sub" /></div></div></td>
+                <td><div class="row nowrap-row"><button type="button" class="av-link" aria-label="Profili görüntüle" onClick=${() => setView(m)}><${Avatar} url=${m.avatar_url} name=${m.full_name} size=${36} /></button><div><button type="button" class="name-link" title="Profili görüntüle" onClick=${() => setView(m)}>${m.full_name || '—'}</button> <${UserTags} uid=${m.id} /><${SchoolLine} p=${m} cls="sub" /></div></div></td>
                 <td class="mono">${m.student_no}</td>
                 ${me.isSuper ? html`<td>${m.phone}</td>` : null}
                 <td>${m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici'}${(m.instruments || []).length ? html`<div class="sub">${m.instruments.join(', ')}</div>` : null}</td>
@@ -279,8 +280,86 @@ function Uyeler({ me }) {
           </tbody>
         </table>`}
       </div>
+      ${view ? html`<${MemberDrawer} m=${view} me=${me} onClose=${() => setView(null)} onEdit=${() => { setEdit(view); setView(null); }} onStatus=${async (st) => { await setStatus(view, st); setView(null); }} />` : null}
       ${edit ? html`<${MemberEdit} m=${edit} me=${me} roles=${roles} onClose=${() => setEdit(null)} onSaved=${() => { setEdit(null); load(); }} />` : null}
       ${adding ? html`<${MemberAdd} onClose=${() => setAdding(false)} onSaved=${() => { setAdding(false); setFilter('onaylandi'); load(); }} />` : null}
+    </div>`;
+}
+
+// Üye profili — yan pencere
+const COND_TR = { sifir: 'Sıfır', az_kullanilmis: 'Az kullanılmış', ikinci_el: 'İkinci el' };
+function MemberDrawer({ m, me, onClose, onEdit, onStatus }) {
+  const [posts, setPosts] = useState(null);
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
+  useEffect(() => {
+    (async () => {
+      const [a, b] = await Promise.all([
+        sb.from('market_posts').select('id,kind,title,looking_for,genre,description,active,created_at').eq('user_id', m.id).order('created_at', { ascending: false }),
+        sb.from('equipment_posts').select('id,title,price,is_negotiable,condition,description,photos,sold,active,created_at').eq('user_id', m.id).order('created_at', { ascending: false })
+      ]);
+      setPosts({ market: a.data || [], eq: b.data || [] });
+    })();
+  }, [m.id]);
+  const row = (k, v) => v ? html`<div class="dr-row"><span>${k}</span><b>${v}</b></div>` : null;
+  return html`
+    <div class="drawer-bg" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <aside class="drawer" role="dialog" aria-modal="true" aria-label=${'Profil: ' + (m.full_name || '')}>
+        <div class="drawer-head">
+          <b>Üye profili</b>
+          <button type="button" class="icon-btn" aria-label="Kapat" onClick=${onClose}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="drawer-body">
+          <div class="dr-top">
+            <${Avatar} url=${m.avatar_url} name=${m.full_name} size=${96} />
+            <div class="stack-xs">
+              <h2 class="dr-name">${m.full_name || '—'}</h2>
+              <${SchoolLine} p=${m} cls="sub" />
+              <div class="row-sm"><span class=${'badge ' + STATUS[m.status][0]}>${STATUS[m.status][1]}</span><${UserTags} uid=${m.id} /></div>
+            </div>
+          </div>
+
+          <div class="dr-sec">
+            <h3>Hakkında</h3>
+            ${m.bio ? html`<p class="dr-bio">${m.bio}</p>` : html`<p class="muted">Açıklama yazmamış.</p>`}
+          </div>
+
+          <div class="dr-sec">
+            <h3>Bilgiler</h3>
+            ${row('Öğrenci no', m.student_no)}
+            ${row('Kullanıcı adı', !m.student_no && m.username)}
+            ${row('Üyelik türü', m.member_type === 'muzisyen' ? 'Müzisyen' : 'Dinleyici')}
+            ${row('Enstrümanlar', (m.instruments || []).join(', '))}
+            ${row('Fakülte', m.faculty)}
+            ${row('Bölüm', m.department)}
+            ${row('Sınıf', m.class_year)}
+            ${row('Rol', m.roles && m.roles.name)}
+            ${me.isSuper ? row('Telefon', m.phone) : null}
+            ${me.isSuper ? row('E-posta', m.contact_email) : null}
+            ${row('Kayıt', fmtDateTime(m.created_at))}
+            ${row('Okul maili', m.school_verified_at ? 'Doğrulandı (' + fmtDateTime(m.school_verified_at) + ')' : '')}
+          </div>
+
+          <div class="dr-sec">
+            <h3>İlanları</h3>
+            ${posts === null ? html`<p class="muted">Yükleniyor…</p>` : posts.market.length + posts.eq.length === 0 ? html`<p class="muted">İlanı yok.</p>` : html`
+              ${posts.market.map((p) => html`<div class="dr-post"><div class="row-sm"><span class="badge">Müzisyen pazarı</span>${!p.active ? html`<span class="badge">Pasif</span>` : null}</div><b>${p.title}</b>${p.description ? html`<p class="sub">${p.description}</p>` : null}</div>`)}
+              ${posts.eq.map((p) => html`<div class="dr-post">${p.photos && p.photos[0] ? html`<img src=${p.photos[0]} alt="" />` : null}<div><div class="row-sm"><span class="badge">Enstrüman pazarı</span>${p.sold ? html`<span class="badge">Satıldı</span>` : !p.active ? html`<span class="badge">Pasif</span>` : null}</div><b>${p.title}</b><div class="sub">${p.price != null ? p.price.toLocaleString('tr-TR') + ' ₺' : 'Fiyat yok'}${p.is_negotiable ? ' · pazarlık olur' : ''}${COND_TR[p.condition] ? ' · ' + COND_TR[p.condition] : ''}</div>${p.description ? html`<p class="sub">${p.description}</p>` : null}</div></div>`)}`}
+          </div>
+        </div>
+        <div class="drawer-foot">
+          ${m.status === 'bekliyor' ? html`
+            <button type="button" class="btn btn-sm btn-dark" onClick=${() => onStatus('onaylandi')}>Onayla</button>
+            <button type="button" class="btn btn-sm btn-ghost" onClick=${() => onStatus('reddedildi')}>Reddet</button>` : null}
+          <button type="button" class="btn btn-sm btn-ghost" onClick=${onEdit}>Düzenle</button>
+          <a class="btn btn-sm btn-ghost" href=${'/#/uye/' + m.id} target="_blank" rel="noopener">Sitede aç ↗</a>
+        </div>
+      </aside>
     </div>`;
 }
 
