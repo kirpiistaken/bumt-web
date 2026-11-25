@@ -531,3 +531,30 @@ body { overflow-x: clip; }
 .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 52px; height: 52px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: #fff; font-size: 30px; line-height: 1; cursor: pointer; }
 .lb-prev { left: 14px; } .lb-next { right: 14px; }
 .lb-count { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: #fff; font-weight: 600; background: rgba(255,255,255,.14); padding: 4px 12px; border-radius: 999px; }
+
+/* Enstrüman ilanı — detay penceresi (sahibinden tarzı) */
+.eq-title-btn { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; color: inherit; }
+.eq-title-btn:hover .eq-title { color: var(--red-dk); }
+.sheet { position: fixed; inset: 0; z-index: 80; background: rgba(10,10,10,.6); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; }
+.sheet-card { position: relative; width: 100%; max-width: 920px; background: var(--paper); border: 2px solid var(--ink); border-radius: 18px; box-shadow: 8px 8px 0 var(--ink); margin: auto; overflow: hidden; }
+.sheet-close { position: absolute; top: 12px; right: 12px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--ink); background: #fff; font-size: 16px; cursor: pointer; }
+.sheet-grid { display: grid; grid-template-columns: 1.1fr 1fr; }
+.sheet-gallery { background: var(--ink); display: flex; flex-direction: column; }
+.sheet-main { position: relative; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; cursor: zoom-in; overflow: hidden; }
+.sheet-main img { width: 100%; height: 100%; object-fit: contain; }
+.sheet-zoomhint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.14); color: #fff; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; pointer-events: none; }
+.sheet-thumbs { display: flex; gap: 8px; padding: 10px; overflow-x: auto; background: #0f0f0f; }
+.sheet-thumb { flex: 0 0 auto; width: 60px; height: 60px; border-radius: 8px; overflow: hidden; border: 2px solid transparent; background: none; padding: 0; cursor: pointer; }
+.sheet-thumb.on { border-color: var(--red); }
+.sheet-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.sheet-info { display: flex; flex-direction: column; gap: 10px; padding: 24px; }
+.sheet-price { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 32px; color: var(--red-dk); line-height: 1; }
+.sheet-title { margin: 0; font-size: clamp(22px, 3vw, 30px); line-height: 1.15; }
+.sheet-desc { white-space: pre-line; line-height: 1.6; margin: 6px 0; }
+.sheet-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; padding-top: 8px; }
+@media (max-width: 760px) {
+  .sheet { padding: 0; }
+  .sheet-card { max-width: 100%; min-height: 100%; border-radius: 0; border: 0; box-shadow: none; margin: 0; }
+  .sheet-grid { grid-template-columns: 1fr; }
+  .sheet-main { aspect-ratio: 4 / 3; }
+}
