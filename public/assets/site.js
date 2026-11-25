@@ -1647,6 +1647,8 @@ function Ekipman({ me }) {
   const [busy, setBusy] = useState(false);
   const [viewer, setViewer] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [guide, setGuide] = useState(false);
+  useEffect(() => { sb.from('settings').select('ekipman_guide').eq('id', 1).maybeSingle().then(({ data, error }) => setGuide(error || !data ? true : data.ekipman_guide !== false)); }, []);
   const uid = me && me.user.id;
   const approved = me && me.profile && me.profile.status === 'onaylandi';
   const canModerate = me && me.can && me.can('uyeler');
@@ -1724,6 +1726,24 @@ function Ekipman({ me }) {
         </div>
         <button type="button" class="btn btn-red" onClick=${newPost}>+ İlan ver</button>
       </div>
+
+      ${guide && !form ? html`
+        <section class="guide guide-light guide-compact" aria-label="Enstrüman pazarı nasıl kullanılır">
+          <div class="guide-head">
+            <span class="guide-badge">Nasıl çalışır?</span>
+            <h2 class="h guide-h">Enstrümanını sat, ekipmanını değerlendir</h2>
+            <p class="guide-lead">Kullanmadığın enstrüman ya da ekipmanı kampüsteki müzisyenlere sat.</p>
+          </div>
+          <ol class="guide-steps">
+            <li><b>Fotoğraf + fiyat</b><span>"+ İlan ver"e bas; fotoğraflarını, fiyatını ve durumunu gir.</span></li>
+            <li><b>Keşfet</b><span>İlanlara göz at, kategoriye göre süz, detayına gir.</span></li>
+            <li><b>Tek tıkla yaz</b><span>WhatsApp'tan satıcıya ulaş. Numaran kimseye görünmez.</span></li>
+          </ol>
+          <div class="guide-foot">
+            <span>Onaylı üyeler ilan verebilir · En fazla 5 ilan · İlanlar yayından önce kontrol edilir</span>
+            <button type="button" class="btn btn-red btn-sm" onClick=${newPost}>${posts.length ? 'Sen de ilanını ver →' : 'İlk ilanı sen ver →'}</button>
+          </div>
+        </section>` : null}
 
       ${form ? html`
         <form id="eq-form" class="card pad-lg stack" onSubmit=${save}>

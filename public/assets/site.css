@@ -560,3 +560,13 @@ body { overflow-x: clip; }
   .sheet-main { aspect-ratio: 4 / 3; }
 }
 @media (max-width: 560px) { .eq-grid { grid-template-columns: 1fr; } }
+
+/* Kompakt rehber kutusu (enstrüman pazarı) */
+.guide-compact { padding: 18px 22px; gap: 14px; box-shadow: 5px 5px 0 var(--ink); }
+.guide-compact .guide-h { font-size: clamp(20px, 3vw, 26px); }
+.guide-compact .guide-lead { font-size: 14.5px; }
+.guide-compact .guide-steps li { padding: 11px 13px 13px; }
+.guide-compact .guide-steps li::before { width: 26px; height: 26px; font-size: 15px; }
+.guide-compact .guide-steps b { font-size: 14.5px; }
+.guide-compact .guide-steps span { font-size: 13px; }
+.guide-compact .guide-foot { font-size: 12.5px; }
