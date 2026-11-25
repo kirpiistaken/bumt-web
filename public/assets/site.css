@@ -500,17 +500,17 @@ body { overflow-x: clip; }
 @media (max-width: 640px) { .verify { padding: 18px 16px; } .verify-steps { grid-template-columns: 1fr; } }
 
 /* Enstrüman pazarı */
-.eq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+.eq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 22px; }
 .eq-card { display: flex; flex-direction: column; background: #fff; border: 2px solid var(--ink); border-radius: 16px; box-shadow: 5px 5px 0 var(--ink); overflow: hidden; }
 .eq-card.eq-sold { opacity: .7; }
-.eq-cover { position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; padding: 0; border: 0; border-bottom: 2px solid var(--ink); background: var(--cream); cursor: zoom-in; overflow: hidden; }
+.eq-cover { position: relative; display: block; width: 100%; aspect-ratio: 5 / 4; padding: 0; border: 0; border-bottom: 2px solid var(--ink); background: var(--cream); cursor: zoom-in; overflow: hidden; }
 .eq-cover img { width: 100%; height: 100%; object-fit: cover; }
 .eq-noimg { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-weight: 600; }
 .eq-sold-tag { position: absolute; top: 10px; left: 10px; background: var(--ink); color: #fff; font-weight: 800; font-size: 13px; padding: 4px 12px; border-radius: 999px; transform: rotate(-4deg); letter-spacing: .04em; }
 .eq-count { position: absolute; bottom: 8px; right: 8px; background: rgba(20,20,20,.75); color: #fff; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
 .eq-body { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 16px; }
 .eq-price { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 22px; color: var(--red-dk); }
-.eq-title { margin: 0; font-size: 17px; line-height: 1.25; }
+.eq-title { margin: 0; font-size: 19px; line-height: 1.25; }
 .eq-desc { margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .eq-seller { margin-top: 2px; }
 .eq-card .post-actions { margin-top: auto; padding-top: 4px; }
@@ -558,3 +558,4 @@ body { overflow-x: clip; }
   .sheet-grid { grid-template-columns: 1fr; }
   .sheet-main { aspect-ratio: 4 / 3; }
 }
+@media (max-width: 560px) { .eq-grid { grid-template-columns: 1fr; } }
