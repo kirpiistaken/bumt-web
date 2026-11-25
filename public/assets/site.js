@@ -638,7 +638,7 @@ function Kurslar({ me }) {
         <section class="guide guide-light" aria-label="Enstrüman kursları nasıl işleyecek">
           <div class="guide-head">
             <span class="guide-badge">Çok yakında</span>
-            <h2 class="h guide-h">Öğrenciden öğrenciye, ücretsiz dersler 🎶</h2>
+            <h2 class="h guide-h">Öğrenciden öğrenciye, ücretsiz dersler</h2>
             <p class="guide-lead">Gitar, piyano, davul, keman, vokal… Enstrüman çalan gönüllü üyelerimiz burada listelenecek. Gönüllüler yakında eklenecek, takipte kal!</p>
           </div>
           <ol class="guide-steps">
