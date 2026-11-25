@@ -1788,7 +1788,7 @@ function Pazar({ me }) {
           <ol class="guide-steps">
             <li><b>İlanını ver</b><span>"+ İlan ver"e bas. Grup mu kuruyorsun, gruba mı katılmak istiyorsun seç; ne çaldığını, kimi aradığını ve tarzını yaz.</span></li>
             <li><b>Keşfet</b><span>"Aranan" filtresinden kendi enstrümanını seç, seni arayan grupları anında gör.</span></li>
-            <li><b>Tek tıkla yaz</b><span>Beğendiğin ilanda WhatsApp butonuna bas, ilan sahibine doğrudan yaz. Numaran kimseye gösterilmez.</span></li>
+            <li><b>Tek tıkla yaz</b><span>Beğendiğin ilanda "Mesaj gönder" ile site üzerinden özelden yaz ya da WhatsApp butonuna bas. Numaran sitede kimseye gösterilmez.</span></li>
           </ol>
           <div class="guide-foot">
             <span>İlan vermek için onaylı ve müzisyen üye olman gerekir · Aynı anda en fazla 3 ilan · İlanlar yayınlanmadan önce kontrol edilir</span>
@@ -1989,7 +1989,7 @@ function Ekipman({ me }) {
           <ol class="guide-steps">
             <li><b>Fotoğraf + fiyat</b><span>"+ İlan ver"e bas; fotoğraflarını, fiyatını ve durumunu gir.</span></li>
             <li><b>Keşfet</b><span>İlanlara göz at, kategoriye göre süz, detayına gir.</span></li>
-            <li><b>Tek tıkla yaz</b><span>WhatsApp'tan satıcıya ulaş. Numaran kimseye görünmez.</span></li>
+            <li><b>Tek tıkla yaz</b><span>Satıcıya site üzerinden özelden mesaj at ya da WhatsApp'tan ulaş.</span></li>
           </ol>
           <div class="guide-foot">
             <span>Onaylı üyeler ilan verebilir · En fazla 5 ilan · İlanlar yayından önce kontrol edilir</span>
