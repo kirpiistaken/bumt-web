@@ -698,7 +698,7 @@ function Dinletiler({ me }) {
     <div class="stack-lg">
       <div class="stack">
         <h1 class="h page-h">Dinletiler</h1>
-        <p class="muted measure">Sahneye çıkmak mı istiyorsun? Bir dinleti ve saat seç, başvuru formunu doldur. Başvurular <b class="ink">${data.settings.dinleti_open_days} gün önceden</b> açılır. Yönetim kurulu seninle iletişime geçip gerekirse bir video ister; onaylanınca yerin kesinleşir.</p>
+        <p class="muted measure">Dinleti programı henüz kesinleşmedi. <b class="ink">Detaylar çok yakında</b> burada ve Instagram hesabımızda duyurulacak, takipte kal!</p>
       </div>
 
       ${apply ? html`
