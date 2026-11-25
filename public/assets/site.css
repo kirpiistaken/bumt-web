@@ -458,3 +458,7 @@ body { overflow-x: clip; }
 .guide-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; opacity: .95; }
 .guide-foot span { opacity: .75; }
 @media (max-width: 760px) { .guide { padding: 20px 16px; } .guide-steps { grid-template-columns: 1fr; } .guide::after { font-size: 44px; } }
+.guide-light { background: #fff; color: var(--ink); box-shadow: 6px 6px 0 var(--ink); }
+.guide-light .guide-h, .guide-light .guide-steps b { color: var(--ink); }
+.guide-light .guide-steps li { background: var(--paper); border-color: var(--line); }
+.guide-light::after { color: rgba(215,48,31,.15); }

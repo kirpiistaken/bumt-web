@@ -632,9 +632,22 @@ function Kurslar({ me }) {
     <div class="stack-lg">
       <div class="stack">
         <h1 class="h page-h">Enstrüman kursları</h1>
-        <p class="muted measure">Hocalarımız, ders veren ve gönüllü öğrencilerimiz müsait saatlerini kendileri işaretler. Bir eğitmen seç, takviminden boş bir saate talep gönder; eğitmen onaylayınca ders senin.</p>
+        <p class="muted measure">Topluluğumuzda enstrüman çalan gönüllü öğrencilerimiz, diğer üyelere ücretsiz ders veriyor. Her gönüllü müsait saatlerini kendisi işaretler; bir gönüllü seç, takviminden boş bir saate talep gönder, onaylanınca ders senin.</p>
       </div>
-      ${data.ins.length === 0 ? html`<p class="muted">Henüz eğitmen eklenmedi.</p>` : html`
+      ${data.ins.length === 0 ? html`
+        <section class="guide guide-light" aria-label="Enstrüman kursları nasıl işleyecek">
+          <div class="guide-head">
+            <span class="guide-badge">Çok yakında</span>
+            <h2 class="h guide-h">Öğrenciden öğrenciye, ücretsiz dersler 🎶</h2>
+            <p class="guide-lead">Gitar, piyano, davul, keman, vokal… Enstrüman çalan gönüllü üyelerimiz burada listelenecek. Gönüllüler yakında eklenecek, takipte kal!</p>
+          </div>
+          <ol class="guide-steps">
+            <li><b>Gönüllünü seç</b><span>Öğrenmek istediğin enstrümana göre gönüllüleri filtrele.</span></li>
+            <li><b>Saatini iste</b><span>Takviminden sana uyan boş bir saate ders talebi gönder.</span></li>
+            <li><b>Çalmaya başla</b><span>Gönüllü onaylayınca ders senin. Tamamen ücretsiz!</span></li>
+          </ol>
+          <div class="guide-foot"><span>Sen de ders vermek ister misin? Yönetim kuruluna ya da @baskentmt'ye yaz, gönüllülerimiz arasına katıl.</span></div>
+        </section>` : html`
         <div class="row chips" role="group" aria-label="Enstrümana göre filtrele">
           ${instruments.map((i) => html`<${Pill} on=${filter === i} onClick=${() => setFilter(i)}>${i}<//>`)}
         </div>
@@ -1456,7 +1469,7 @@ function Pazar({ me }) {
           </ol>
           <div class="guide-foot">
             <span>İlan vermek için onaylı ve müzisyen üye olman gerekir · Aynı anda en fazla 3 ilan · İlanlar yayınlanmadan önce kontrol edilir</span>
-            <button type="button" class="btn btn-red btn-sm" onClick=${newPost}>İlk ilanı sen ver →</button>
+            <button type="button" class="btn btn-red btn-sm" onClick=${newPost}>${posts && posts.length ? 'Sen de ilanını ver →' : 'İlk ilanı sen ver →'}</button>
           </div>
         </section>` : null}
 
