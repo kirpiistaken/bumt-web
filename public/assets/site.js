@@ -24,7 +24,7 @@ function Pill({ on, onClick, children, label }) {
 // ---------------------------------------------------------------------
 // Üst menü
 // ---------------------------------------------------------------------
-const NAV = [['', 'Ana Sayfa'], ['pazar', 'Müzisyen Pazarı'], ['prova', 'Prova Odası'], ['kurslar', 'Kurslar'], ['dinletiler', 'Dinletiler']];
+const NAV = [['', 'Ana Sayfa'], ['pazar', 'Müzisyen Pazarı'], ['ekipman', 'Enstrüman Pazarı'], ['prova', 'Prova Odası'], ['kurslar', 'Kurslar'], ['dinletiler', 'Dinletiler']];
 const SOON = { prova: 1, kurslar: 1, dinletiler: 1 };
 
 function Header({ me, route }) {
@@ -71,9 +71,10 @@ const ICON = {
   prova: 'M4 21h16M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M14 12h.01',
   kurslar: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   dinletiler: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3M19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
-  pazar: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8'
+  pazar: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',
+  ekipman: 'M20 7h-3V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zM9 5h6v2H9z'
 };
-const BNAV = [['', 'Ana Sayfa', 'home'], ['pazar', 'Pazar', 'pazar'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler']];
+const BNAV = [['', 'Ana Sayfa', 'home'], ['pazar', 'Pazar', 'pazar'], ['ekipman', 'Ekipman', 'ekipman'], ['prova', 'Prova', 'prova'], ['kurslar', 'Kurslar', 'kurslar'], ['dinletiler', 'Dinleti', 'dinletiler']];
 
 // Numarayı sitede göstermeden doğrudan WhatsApp'ı açar.
 // Pencere tıklama anında açılır (telefon tarayıcıları sonradan açılan pencereleri engeller), numara gelince WhatsApp'a yönlenir.
@@ -1614,6 +1615,206 @@ async function checkPost(id, isNew) {
   } catch (e) { return null; }
 }
 
+// ---------------------------------------------------------------------
+// Enstrüman pazarı (ikinci el satış ilanları)
+// ---------------------------------------------------------------------
+const EQ_CATS = ['Gitar', 'Bas Gitar', 'Davul & Perküsyon', 'Klavye & Piyano', 'Yaylı', 'Nefesli', 'Amfi & Efekt', 'Mikrofon & Ses', 'Aksesuar', 'Diğer'];
+const EQ_CONDS = [['sifir', 'Sıfır'], ['az_kullanilmis', 'Az kullanılmış'], ['ikinci_el', 'İkinci el']];
+const EQ_COLS = 'id,user_id,category,title,price,is_negotiable,condition,description,photos,sold,active,created_at,display_name,avatar_url';
+const condLabel = (c) => (EQ_CONDS.find((x) => x[0] === c) || [, 'İkinci el'])[1];
+const priceLabel = (p) => p.price == null ? 'Fiyat yok' : Number(p.price).toLocaleString('tr-TR') + ' TL';
+
+async function checkEquip(id, isNew) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch('/api/ekipman', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify({ id, is_new: isNew }) });
+    return await r.json().catch(() => null);
+  } catch (e) { return null; }
+}
+
+async function uploadEquipPhoto(file, uid) {
+  const blob = await compressImage(file, 1400);
+  const path = uid + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.jpg';
+  const { error } = await sb.storage.from('equipment').upload(path, blob, { contentType: 'image/jpeg', cacheControl: '3600' });
+  if (error) throw error;
+  return sb.storage.from('equipment').getPublicUrl(path).data.publicUrl;
+}
+
+function Ekipman({ me }) {
+  const [posts, setPosts] = useState(null);
+  const [cat, setCat] = useState('Tümü');
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [viewer, setViewer] = useState(null);
+  const uid = me && me.user.id;
+  const approved = me && me.profile && me.profile.status === 'onaylandi';
+  const canModerate = me && me.can && me.can('uyeler');
+
+  const load = useCallback(async () => {
+    const { data, error } = await sb.from('equipment_posts').select(EQ_COLS + ',review,review_reason').eq('active', true).order('created_at', { ascending: false });
+    if (error) toast(errMsg(error), 'err');
+    setPosts(data || []);
+    (data || []).filter((p) => p.review === 'kontrol' && p.user_id === uid).forEach((p) => checkEquip(p.id, false).then(() => setTimeout(load, 400)));
+  }, [uid]);
+  useEffect(() => { load(); }, [load]);
+  if (!posts) return html`<${Loading} />`;
+
+  const shown = posts.filter((p) => cat === 'Tümü' || p.category === cat);
+  const cats = ['Tümü', ...EQ_CATS.filter((c) => posts.some((p) => p.category === c))];
+
+  const newPost = () => {
+    if (!me) return go('/giris');
+    if (!approved) return toast('İlan vermek için üyeliğinin onaylanması gerekiyor.', 'err');
+    setForm({ category: EQ_CATS[0], title: '', price: '', is_negotiable: false, condition: 'ikinci_el', description: '', photos: [] });
+    setTimeout(() => { const el = document.getElementById('eq-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+  };
+  const onPhotos = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    const room = 4 - form.photos.length;
+    if (room <= 0) return toast('En fazla 4 fotoğraf ekleyebilirsin.', 'err');
+    setBusy(true);
+    try {
+      const urls = [];
+      for (const f of files.slice(0, room)) urls.push(await uploadEquipPhoto(f, uid));
+      setForm((cur) => ({ ...cur, photos: [...cur.photos, ...urls] }));
+    } catch (err) { toast(errMsg(err), 'err'); }
+    setBusy(false);
+  };
+  const save = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim()) return toast('İlana bir başlık yaz.', 'err');
+    if (!form.photos.length) return toast('En az bir fotoğraf ekle.', 'err');
+    const price = form.price === '' ? null : Math.max(0, Math.round(Number(String(form.price).replace(/[^\d]/g, '')) || 0));
+    const row = { category: form.category, title: form.title.trim(), price, is_negotiable: !!form.is_negotiable, condition: form.condition, description: form.description.trim(), photos: form.photos };
+    const { data, error } = form.id ? await sb.from('equipment_posts').update(row).eq('id', form.id).select('id').single() : await sb.from('equipment_posts').insert(row).select('id').single();
+    if (error) return toast(errMsg(error), 'err');
+    setForm(null);
+    toast('İlanın kontrol ediliyor…');
+    const r = await checkEquip(data.id, !form.id);
+    if (r && r.status === 'incelemede') toast('İlanın uygunsuz ifade içeriyor olabilir; yönetim kontrol ettikten sonra yayınlanacak.', 'err');
+    else toast(form.id ? 'İlanın güncellendi.' : 'İlanın yayında!');
+    load();
+  };
+  const toggleSold = async (p) => {
+    const { error } = await sb.from('equipment_posts').update({ sold: !p.sold }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    load();
+  };
+  const close = async (p, moderate) => {
+    if (!confirm(moderate ? 'Bu ilan kaldırılsın mı?' : 'İlanını kaldırmak istiyor musun? Artık listede görünmez.')) return;
+    const { error } = await sb.from('equipment_posts').update({ active: false }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('İlan kaldırıldı.'); load();
+  };
+  const publish = async (p) => {
+    const { error } = await sb.from('equipment_posts').update({ review: '', review_reason: '' }).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'err');
+    toast('İlan yayına alındı.'); load();
+  };
+
+  return html`
+    <div class="stack-lg">
+      <div class="row between">
+        <div class="stack">
+          <h1 class="h page-h">Enstrüman pazarı</h1>
+          <p class="muted measure">Enstrümanını ya da ekipmanını mı satıyorsun? İlan ver, fotoğrafını ve fiyatını koy. İlgilenen onaylı üyeler sana WhatsApp'tan ulaşır; numaran kimseye gösterilmez.</p>
+        </div>
+        <button type="button" class="btn btn-red" onClick=${newPost}>+ İlan ver</button>
+      </div>
+
+      ${form ? html`
+        <form id="eq-form" class="card pad-lg stack" onSubmit=${save}>
+          <h2 class="h2">${form.id ? 'İlanı düzenle' : 'Yeni ilan'}</h2>
+          <div class="fgrid">
+            <${Field} label="Başlık"><input class="inp" required maxlength="80" value=${form.title} onInput=${(e) => setForm({ ...form, title: e.target.value })} placeholder="Örn. Yamaha Pacifica 112V Elektro Gitar" /><//>
+            <${Field} label="Kategori"><select class="inp" value=${form.category} onChange=${(e) => setForm({ ...form, category: e.target.value })}>${EQ_CATS.map((c) => html`<option>${c}</option>`)}</select><//>
+            <${Field} label="Fiyat (TL)" hint="Boş bırakırsan 'fiyat yok' görünür"><input class="inp" inputmode="numeric" value=${form.price} onInput=${(e) => setForm({ ...form, price: e.target.value.replace(/[^\d]/g, '') })} placeholder="Örn. 7500" /><//>
+          </div>
+          <div class="row chips">
+            <span class="strong small">Durum:</span>
+            ${EQ_CONDS.map(([v, l]) => html`<${Pill} on=${form.condition === v} onClick=${() => setForm({ ...form, condition: v })}>${l}<//>`)}
+            <label class="check"><input type="checkbox" checked=${form.is_negotiable} onChange=${(e) => setForm({ ...form, is_negotiable: e.target.checked })} /> Pazarlık payı var</label>
+          </div>
+          <${Field} label="Açıklama"><textarea class="inp" rows="4" maxlength="1500" value=${form.description} onInput=${(e) => setForm({ ...form, description: e.target.value })} placeholder="Markası, modeli, yaşı, kullanım durumu, varsa kusurları, kutusu/aksesuarları, görüşülecek yer…"></textarea><//>
+          <div class="stack-xs">
+            <span class="fld"><span>Fotoğraflar (en fazla 4)</span></span>
+            <div class="eq-upload">
+              ${form.photos.map((u, i) => html`<div class="eq-thumb"><img src=${u} alt="" /><button type="button" aria-label="Fotoğrafı sil" onClick=${() => setForm({ ...form, photos: form.photos.filter((_, j) => j !== i) })}>✕</button></div>`)}
+              ${form.photos.length < 4 ? html`<label class=${'eq-add' + (busy ? ' eq-add-busy' : '')}>${busy ? '…' : '+ Fotoğraf'}<input type="file" accept="image/*" multiple hidden onChange=${onPhotos} /></label>` : null}
+            </div>
+          </div>
+          <div class="row">
+            <button type="submit" class="btn btn-red" disabled=${busy}>${form.id ? 'Kaydet' : 'İlanı yayınla'}</button>
+            <button type="button" class="btn btn-ghost" onClick=${() => setForm(null)}>Vazgeç</button>
+          </div>
+        </form>` : null}
+
+      ${posts.length > 0 ? html`
+        <div class="row chips" role="group" aria-label="Kategoriye göre filtrele">
+          ${cats.map((c) => html`<${Pill} on=${cat === c} onClick=${() => setCat(c)}>${c}<//>`)}
+        </div>` : null}
+
+      ${shown.length === 0 ? html`<div class="locked"><h2 class="h2">Henüz ilan yok</h2><p class="muted">İlk ilanı sen ver!</p></div>` : html`
+        <div class="eq-grid">
+          ${shown.map((p) => {
+            const mine = p.user_id === uid;
+            const hidden = p.review === 'incelemede' || p.review === 'kontrol';
+            const cover = (p.photos || [])[0];
+            return html`
+              <article class=${'eq-card' + (hidden ? ' post-hidden' : '') + (p.sold ? ' eq-sold' : '')}>
+                <button type="button" class="eq-cover" onClick=${() => cover && setViewer({ photos: p.photos, i: 0 })} aria-label="Fotoğrafları büyüt">
+                  ${cover ? html`<img src=${cover} alt=${p.title} loading="lazy" />` : html`<span class="eq-noimg">Fotoğraf yok</span>`}
+                  ${p.sold ? html`<span class="eq-sold-tag">Satıldı</span>` : null}
+                  ${(p.photos || []).length > 1 ? html`<span class="eq-count">📷 ${p.photos.length}</span>` : null}
+                </button>
+                <div class="eq-body">
+                  ${hidden ? html`<div class="post-flag">${p.review === 'kontrol' ? 'Kontrol ediliyor…' : mine ? 'İncelemede — yönetim onaylayınca yayınlanacak' : '⚠️ Gizlendi: ' + (p.review_reason || 'uygunsuz olabilir')}
+                    ${canModerate && !mine && p.review === 'incelemede' ? html` <button type="button" class="link-btn" onClick=${() => publish(p)}>Yayına al</button>` : null}</div>` : null}
+                  <div class="row between"><span class="eq-price">${priceLabel(p)}</span><span class="tag tag-cream">${condLabel(p.condition)}</span></div>
+                  <h3 class="eq-title">${p.title}</h3>
+                  <div class="row-sm"><span class="tag tag-dark">${p.category}</span>${p.is_negotiable ? html`<span class="muted small">Pazarlık payı var</span>` : null}</div>
+                  ${p.description ? html`<p class="eq-desc">${p.description}</p>` : null}
+                  <div class="row nowrap eq-seller">
+                    <${Avatar} url=${p.avatar_url} name=${p.display_name} size=${34} />
+                    <span class="small">${approved ? html`<a href=${'#/uye/' + p.user_id}><b>${p.display_name}</b></a>` : html`<b>${p.display_name}</b>`} <${UserTags} uid=${p.user_id} /></span>
+                  </div>
+                  <div class="row post-actions">
+                    ${mine ? html`
+                      <button type="button" class="btn btn-sm btn-dark" onClick=${() => toggleSold(p)}>${p.sold ? 'Satışta' : 'Satıldı'}</button>
+                      <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setForm({ ...p, price: p.price == null ? '' : String(p.price) })}>Düzenle</button>
+                      <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>Kaldır</button>`
+                    : !me ? html`<a class="btn btn-sm btn-ghost" href="#/giris">İletişim için giriş yap</a>`
+                    : !approved ? html`<span class="muted small">İletişim üyeliğin onaylanınca görünür.</span>`
+                    : html`<button type="button" class="btn btn-sm btn-wa" onClick=${() => openWhatsApp('equipment_contact', { p_post: p.id }, 'Merhaba, BÜMT Enstrüman Pazarı\'ndaki "' + p.title + '" ilanın hâlâ duruyor mu?', 'Bu üye telefon numarası eklememiş.')}>WhatsApp'tan yaz</button>`}
+                    ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
+                  </div>
+                </div>
+              </article>`;
+          })}
+        </div>`}
+      ${viewer ? html`<${EqViewer} photos=${viewer.photos} start=${viewer.i} onClose=${() => setViewer(null)} />` : null}
+    </div>`;
+}
+
+function EqViewer({ photos, start, onClose }) {
+  const [i, setI] = useState(start || 0);
+  const list = photos || [];
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose(); if (e.key === 'ArrowRight') setI((x) => (x + 1) % list.length); if (e.key === 'ArrowLeft') setI((x) => (x - 1 + list.length) % list.length); };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, []);
+  return html`
+    <div class="lightbox" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <button class="lb-close" aria-label="Kapat" onClick=${onClose}>✕</button>
+      ${list.length > 1 ? html`<button class="lb-nav lb-prev" aria-label="Önceki" onClick=${() => setI((i - 1 + list.length) % list.length)}>‹</button>` : null}
+      <img class="lb-img" src=${list[i]} alt="" />
+      ${list.length > 1 ? html`<button class="lb-nav lb-next" aria-label="Sonraki" onClick=${() => setI((i + 1) % list.length)}>›</button>` : null}
+      ${list.length > 1 ? html`<span class="lb-count">${i + 1} / ${list.length}</span>` : null}
+    </div>`;
+}
+
 function Uye({ id, me }) {
   const [m, setM] = useState(undefined);
   useEffect(() => {
@@ -1746,6 +1947,7 @@ function App() {
   else if (p === 'kurslar') page = html`<${Kurslar} me=${me} />`;
   else if (p === 'dinletiler') page = html`<${Dinletiler} me=${me} />`;
   else if (p === 'onay') page = html`<${OnayPage} me=${me} refresh=${refresh} />`;
+  else if (p === 'ekipman') page = html`<${Ekipman} me=${me} />`;
   else if (p === 'etkinlik') page = html`<${EventPage} id=${route.param} />`;
   else if (p === 'form') page = html`<${FormPage} id=${route.param} me=${me} />`;
   else if (p === 'giris') page = html`<${Giris} me=${me} />`;
