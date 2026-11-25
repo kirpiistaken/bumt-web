@@ -100,10 +100,67 @@ function BottomNav({ route }) {
     </nav>`;
 }
 
+// ---------------------------------------------------------------------
+// Okul maili ile hesap onayı
+// ---------------------------------------------------------------------
+const WEBMAIL = 'https://webmail.baskent.edu.tr/';
+async function sendSchoolMail() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return { error: 'Önce giriş yapmalısın.' };
+  const r = await fetch('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ action: 'verify_send' }) });
+  const d = await r.json().catch(() => ({}));
+  return r.ok ? d : { error: d.error || 'Mail gönderilemedi.' };
+}
+
+function SchoolVerify({ studentNo, autoSend, onCheck }) {
+  const [state, setState] = useState(autoSend ? 'sending' : 'idle');
+  const [msg, setMsg] = useState('');
+  const send = async () => {
+    setState('sending'); setMsg('');
+    const r = await sendSchoolMail();
+    if (r.already) { setState('sent'); onCheck && onCheck(); return; }
+    if (r.error) { setState('error'); setMsg(r.error); return; }
+    setState('sent');
+  };
+  useEffect(() => { if (autoSend) send(); }, []);
+  const addr = (studentNo || 'öğrencino') + '@mail.baskent.edu.tr';
+  return html`
+    <section class="verify">
+      <div class="verify-head">
+        <span class="guide-badge">Son adım</span>
+        <h2 class="h verify-h">Okul mailinle hesabını onayla</h2>
+        <p>Öğrenci numaranın sana ait olduğunu doğrulamak için okul mail adresine <b class="mono">${addr}</b> bir onay linki ${state === 'sent' ? 'gönderdik' : 'gönderiyoruz'}. Linke tıkladığın an hesabın onaylanır.</p>
+        ${state === 'sending' ? html`<p class="verify-status">📨 Onay maili gönderiliyor…</p>` : null}
+        ${state === 'sent' ? html`<p class="verify-status verify-ok">✅ Onay maili gönderildi! Birkaç dakika içinde gelir.</p>` : null}
+        ${state === 'error' ? html`<p class="verify-status verify-err">⚠️ ${msg}</p>` : null}
+      </div>
+      <ol class="verify-steps">
+        <li><b>Okul mailine gir</b><span><a href=${WEBMAIL} target="_blank" rel="noopener">webmail.baskent.edu.tr</a> adresini aç.</span></li>
+        <li><b>"Öğrenci"yi seç</b><span>Giriş ekranının altındaki kutuda <b>"Akademik ve İdari"</b> yazıyor; onu <b>"Öğrenci"</b> olarak değiştir.</span></li>
+        <li><b>Giriş yap</b><span>Kullanıcı adına <b>öğrenci numaranı</b> (sadece rakamlar, @ olmadan), şifre kısmına <b>okul mail şifreni</b> yaz ve Login'e bas.</span></li>
+        <li><b>Linke tıkla</b><span>"BÜMT: Hesabını onayla" mailini aç ve <b>"Hesabımı onayla"</b> butonuna bas. Mail gelen kutusunda yoksa <b>Spam / Junk</b> klasörüne bak.</span></li>
+      </ol>
+      <div class="verify-foot">
+        <a class="btn btn-red" href=${WEBMAIL} target="_blank" rel="noopener">Okul mailini aç ↗</a>
+        <button type="button" class="btn btn-ghost" disabled=${state === 'sending'} onClick=${send}>${state === 'idle' ? 'Onay mailini gönder' : 'Maili tekrar gönder'}</button>
+        ${onCheck ? html`<button type="button" class="btn btn-ghost" onClick=${onCheck}>Onayladım, kontrol et</button>` : null}
+      </div>
+      <p class="verify-note">Okul mail şifreni bilmiyorsan <a href="https://bidb.baskent.edu.tr/sifre.php" target="_blank" rel="noopener">buradan</a> şifre işlemlerini yapabilirsin. Okul mailine hiç ulaşamıyorsan dert etme: yönetim kurulu başvurunu elle de onaylayabilir.</p>
+    </section>`;
+}
+
+function OnayPage({ me, refresh }) {
+  if (me === undefined) return html`<${Loading} />`;
+  if (!me) return html`<div class="stack"><h1 class="h page-h">Hesap onayı</h1><p class="muted">Önce giriş yap.</p><a class="btn btn-red self-start" href="#/giris">Giriş yap</a></div>`;
+  if (me.profile.status === 'onaylandi') return html`
+    <div class="card pad-lg stack narrow"><span class="tag tag-dark self-start">Onaylı üye</span><h1 class="h2">Hesabın onaylı 🎉</h1><p class="muted">Müzisyen pazarında ilan verebilir, topluluk WhatsApp grubuna katılabilirsin.</p><a class="btn btn-red self-start" href="#/pazar">Müzisyen pazarına git</a></div>`;
+  return html`<div class="narrow-wide"><${SchoolVerify} studentNo=${me.profile.student_no} onCheck=${refresh} /></div>`;
+}
+
 function StatusBanner({ me }) {
   if (!me || !me.profile || me.profile.is_staff) return null;
   if (me.profile.status === 'bekliyor') return html`
-    <div class="banner"><div class="wrap">Üyeliğin <b>onay bekliyor</b>. Yönetim kurulu öğrenci numaranı kontrol edince rezervasyon yapabileceksin.</div></div>`;
+    <div class="banner"><div class="wrap">Üyeliğin <b>onay bekliyor</b>. Okul mailinle hemen onaylayabilirsin: <a href="#/onay"><b>Nasıl yapılır? →</b></a></div></div>`;
   if (me.profile.status === 'reddedildi') return html`
     <div class="banner banner-red"><div class="wrap">Üyelik başvurun onaylanmadı. Bir yanlışlık olduğunu düşünüyorsan yönetim kuruluna yaz.</div></div>`;
   return null;
@@ -991,11 +1048,9 @@ function Kayit({ me }) {
 
   if (me && !done) return html`<div class="stack"><h1 class="h page-h">Zaten giriş yaptın</h1><a class="btn btn-ghost self-start" href="#/profil">Profilime git</a></div>`;
   if (done) return html`
-    <div class="card pad-lg stack narrow">
-      <span class="tag tag-cream self-start">Onay bekliyor</span>
-      <h1 class="h2">Kaydın alındı</h1>
-      <p class="muted">Yönetim kurulu öğrenci numaranı kontrol edip hesabını onaylayacak. Onaylanınca prova, kurs ve dinleti rezervasyonu yapabilirsin.</p>
-      <a class="btn btn-ghost self-start" href="#/">Ana sayfaya dön</a>
+    <div class="narrow-wide stack">
+      <div class="stack-xs"><span class="tag tag-cream self-start">Kaydın alındı 🎉</span><h1 class="h page-h">Neredeyse tamam!</h1></div>
+      <${SchoolVerify} studentNo=${done} autoSend=${true} onCheck=${() => { location.hash = '#/onay'; }} />
     </div>`;
 
   const submit = async (e) => {
@@ -1020,7 +1075,7 @@ function Kayit({ me }) {
     setBusy(false);
     if (error) return setErr(errMsg(error));
     if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) return setErr('Bu öğrenci numarasıyla zaten bir hesap var. Giriş yapmayı dene.');
-    setDone(true);
+    setDone(no);
     window.scrollTo(0, 0);
   };
 
@@ -1157,6 +1212,7 @@ function Profil({ me, refresh }) {
       </div>
 
       <${WaGroupCard} me=${me} />
+      ${p.status === 'bekliyor' && !p.is_staff ? html`<${SchoolVerify} studentNo=${p.student_no} onCheck=${refresh} />` : null}
 
       <div class="card pad row photo-card">
         <${Avatar} url=${p.avatar_url} name=${p.full_name} size=${112} />
@@ -1679,6 +1735,7 @@ function App() {
   else if (p === 'prova') page = html`<${Prova} me=${me} />`;
   else if (p === 'kurslar') page = html`<${Kurslar} me=${me} />`;
   else if (p === 'dinletiler') page = html`<${Dinletiler} me=${me} />`;
+  else if (p === 'onay') page = html`<${OnayPage} me=${me} refresh=${refresh} />`;
   else if (p === 'etkinlik') page = html`<${EventPage} id=${route.param} />`;
   else if (p === 'form') page = html`<${FormPage} id=${route.param} me=${me} />`;
   else if (p === 'giris') page = html`<${Giris} me=${me} />`;
