@@ -123,6 +123,15 @@ function SchoolVerify({ studentNo, autoSend, onCheck }) {
     setState('sent');
   };
   useEffect(() => { if (autoSend) send(); }, []);
+  // Onaylanana kadar her 15 sn'de bir kendini kontrol et; kullanıcı telefonda linke bassa bile bu sekme kendiliğinden ilerler
+  useEffect(() => {
+    if (!onCheck) return;
+    let alive = true;
+    const t = setInterval(async () => {
+      try { const me = await loadMe(); if (alive && me && me.profile && me.profile.status === 'onaylandi') { clearInterval(t); onCheck(); } } catch (e) {}
+    }, 15000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
   const addr = (studentNo || 'öğrencino') + '@mail.baskent.edu.tr';
   return html`
     <section class="verify">
@@ -131,7 +140,7 @@ function SchoolVerify({ studentNo, autoSend, onCheck }) {
         <h2 class="h verify-h">Okul mailinle hesabını onayla</h2>
         <p>Öğrenci numaranın sana ait olduğunu doğrulamak için okul mail adresine <b class="mono">${addr}</b> bir onay linki ${state === 'sent' ? 'gönderdik' : 'gönderiyoruz'}. Linke tıkladığın an hesabın onaylanır.</p>
         ${state === 'sending' ? html`<p class="verify-status">📨 Onay maili gönderiliyor…</p>` : null}
-        ${state === 'sent' ? html`<p class="verify-status verify-ok">✅ Onay maili gönderildi! Okulun spam filtresi yüzünden gelmesi <b>5–10 dakika</b> sürebilir, biraz sabret.</p>` : null}
+        ${state === 'sent' ? html`<p class="verify-status verify-ok">✅ Onay maili yola çıktı! Okulun spam filtresi yüzünden gelmesi <b>birkaç dakika</b> sürebilir — bu normal. Hesabın oluşturuldu; istersen bu sayfayı kapatıp mail gelince linke tıklayabilirsin, ya da burada bekle, linke basınca bu ekran kendiliğinden ilerler.</p>` : null}
         ${state === 'error' ? html`<p class="verify-status verify-err">⚠️ ${msg}</p>` : null}
       </div>
       <ol class="verify-steps">
@@ -145,6 +154,7 @@ function SchoolVerify({ studentNo, autoSend, onCheck }) {
         <button type="button" class="btn btn-ghost" disabled=${state === 'sending'} onClick=${send}>${state === 'idle' ? 'Onay mailini gönder' : 'Maili tekrar gönder'}</button>
         ${onCheck ? html`<button type="button" class="btn btn-ghost" onClick=${onCheck}>Onayladım, kontrol et</button>` : null}
       </div>
+      <p class="verify-note">Mail gelene kadar <a href="#/pazar">müzisyen pazarındaki ilanlara göz atabilirsin</a>. İlan verebilmen için hesabının onaylanması yeterli.</p>
       <p class="verify-note">Okul mail şifreni bilmiyorsan <a href="https://bidb.baskent.edu.tr/sifre.php" target="_blank" rel="noopener">buradan</a> şifre işlemlerini yapabilirsin. Okul mailine hiç ulaşamıyorsan dert etme: yönetim kurulu başvurunu elle de onaylayabilir.</p>
     </section>`;
 }
