@@ -159,7 +159,7 @@ function Home({ me }) {
       <span class="hero-kicker">Kampüsün müzik topluluğu</span>
       <h1 class="h hero-h">Sahne hepimizin.</h1>
       <p class="hero-lead">Başkent Üniversitesi Müzik Topluluğu'na hoş geldin! Burası çalan, söyleyen, dinleyen ve müziği seven herkesin buluşma noktası. İlk akorunu yeni öğreniyor olsan da yıllardır sahnede olsan da burada sana yer var.</p>
-      <p class="hero-sub">Üye ol, prova odasını ayır, enstrüman derslerine göz at ve etkinliklerimizden ilk sen haberdar ol.</p>
+      <p class="hero-sub">Üye ol, enstrüman derslerine göz at, müzisyen pazarında grup arkadaşını bul ve etkinliklerimizden ilk sen haberdar ol.</p>
       <div class="hero-cta">
         ${me ? html`<a class="btn btn-red" href="#/kurslar">Enstrüman kursları</a>` : html`<a class="btn btn-red" href="#/kayit">Hemen üye ol</a>`}
         <a class="btn btn-cream" href="#/prova">Prova odası</a>
