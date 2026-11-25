@@ -1377,6 +1377,11 @@ function Pazar({ me }) {
   const approved = me && me.profile && me.profile.status === 'onaylandi';
   const isMusician = me && me.profile && me.profile.member_type === 'muzisyen';
   const canModerate = me && me.can && me.can('uyeler');
+  const [guide, setGuide] = useState(false);
+  useEffect(() => {
+    // 020 çalıştırılmadıysa kutu varsayılan olarak görünür
+    sb.from('settings').select('pazar_guide').eq('id', 1).maybeSingle().then(({ data, error }) => setGuide(error || !data ? true : data.pazar_guide !== false));
+  }, []);
 
   const load = useCallback(async () => {
     let { data, error } = await sb.from('market_posts').select(MARKET_COLS + ',review,review_reason').eq('active', true).order('created_at', { ascending: false });
@@ -1436,6 +1441,24 @@ function Pazar({ me }) {
         </div>
         <button type="button" class="btn btn-red" onClick=${newPost}>+ İlan ver</button>
       </div>
+
+      ${guide && !form ? html`
+        <section class="guide" aria-label="Müzisyen pazarı nasıl kullanılır">
+          <div class="guide-head">
+            <span class="guide-badge">Yeni</span>
+            <h2 class="h guide-h">Grubunu burada kur! 🎸</h2>
+            <p class="guide-lead">Davulcu mu arıyorsun, basçısı eksik bir grup mu? Müzisyen pazarı, kampüsteki müzisyenlerin birbirini bulduğu yer. 3 adımda kullanımı:</p>
+          </div>
+          <ol class="guide-steps">
+            <li><b>İlanını ver</b><span>"+ İlan ver"e bas. Grup mu kuruyorsun, gruba mı katılmak istiyorsun seç; ne çaldığını, kimi aradığını ve tarzını yaz.</span></li>
+            <li><b>Keşfet</b><span>"Aranan" filtresinden kendi enstrümanını seç, seni arayan grupları anında gör.</span></li>
+            <li><b>Tek tıkla yaz</b><span>Beğendiğin ilanda WhatsApp butonuna bas, ilan sahibine doğrudan yaz. Numaran kimseye gösterilmez.</span></li>
+          </ol>
+          <div class="guide-foot">
+            <span>İlan vermek için onaylı ve müzisyen üye olman gerekir · Aynı anda en fazla 3 ilan · İlanlar yayınlanmadan önce kontrol edilir</span>
+            <button type="button" class="btn btn-red btn-sm" onClick=${newPost}>İlk ilanı sen ver →</button>
+          </div>
+        </section>` : null}
 
       ${form ? html`
         <form id="ilan-form" class="card pad-lg stack" onSubmit=${save}>

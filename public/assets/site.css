@@ -442,3 +442,19 @@ body { overflow-x: clip; }
 .wa-ico { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; background: #25D366; color: #fff; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(18,140,62,.35); }
 .wa-card .wa-ico svg { color: #fff; }
 .wa-card-wait .wa-ico { background: var(--line2); box-shadow: none; }
+
+/* Müzisyen pazarı rehber kutusu */
+.guide { position: relative; display: flex; flex-direction: column; gap: 18px; padding: 24px 26px; border-radius: 20px; background: var(--ink); color: var(--cream); border: 2px solid var(--ink); box-shadow: 6px 6px 0 var(--red); overflow: hidden; }
+.guide::after { content: '♪ ♫ ♪'; position: absolute; right: 18px; top: 6px; font-size: 64px; letter-spacing: -6px; color: rgba(215,48,31,.25); pointer-events: none; }
+.guide-head { display: flex; flex-direction: column; gap: 8px; max-width: 700px; }
+.guide-badge { align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: var(--red); color: #fff; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.guide-h { margin: 0; font-size: clamp(26px, 4vw, 36px); line-height: 1.15; color: #fff; }
+.guide-lead { margin: 0; opacity: .9; line-height: 1.55; }
+.guide-steps { list-style: none; counter-reset: s; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.guide-steps li { counter-increment: s; display: flex; flex-direction: column; gap: 4px; padding: 14px 14px 16px; border-radius: 14px; background: rgba(244,234,213,.07); border: 1px solid rgba(244,234,213,.18); }
+.guide-steps li::before { content: counter(s); display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: var(--red); color: #fff; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+.guide-steps b { color: #fff; font-size: 16px; }
+.guide-steps span { font-size: 14px; line-height: 1.5; opacity: .85; }
+.guide-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; opacity: .95; }
+.guide-foot span { opacity: .75; }
+@media (max-width: 760px) { .guide { padding: 20px 16px; } .guide-steps { grid-template-columns: 1fr; } .guide::after { font-size: 44px; } }

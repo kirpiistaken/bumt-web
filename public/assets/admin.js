@@ -240,6 +240,7 @@ function Uyeler({ me }) {
   return html`
     <div class="stack">
       <${WaGroupSetting} />
+      <${PazarGuideSetting} />
       <${TagManager} onChange=${load} />
       <div class="toolbar">
         <div class="tabs" role="tablist">
@@ -295,6 +296,28 @@ function MemberForm({ f, setF, showPhone }) {
     </div>`;
 }
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+
+function PazarGuideSetting() {
+  const [on, setOn] = useState(null);
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    sb.from('settings').select('pazar_guide').eq('id', 1).maybeSingle().then(({ data, error }) => { if (error) { setMissing(true); setOn(true); } else setOn(!data || data.pazar_guide !== false); });
+  }, []);
+  if (on === null) return null;
+  const toggle = async () => {
+    const { error } = await sb.rpc('set_pazar_guide', { p_on: !on });
+    if (error) return toast(errMsg(error), 'err');
+    setOn(!on); toast(!on ? 'Rehber kutusu açıldı.' : 'Rehber kutusu kapatıldı.');
+  };
+  return html`
+    <div class="panel pad toolbar">
+      <div class="stack-xs"><h2 class="h2">Müzisyen pazarı rehber kutusu</h2>
+        <span class="muted small">Pazar sayfasının üstündeki "nasıl kullanılır" kutusu. İlanlar çoğalınca kapatabilirsin.</span>
+        ${missing ? html`<span class="form-err">Aç/kapat için 020_pazar_rehber.sql dosyasını Supabase'de çalıştır (şu an kutu açık).</span>` : null}</div>
+      <div class="row"><span class=${'badge ' + (on ? 'badge-ok' : 'badge-no')}>${on ? 'Açık' : 'Kapalı'}</span>
+        <button type="button" class="btn btn-sm btn-dark" disabled=${missing} onClick=${toggle}>${on ? 'Kapat' : 'Aç'}</button></div>
+    </div>`;
+}
 
 function WaGroupSetting() {
   const [v, setV] = useState(null);
