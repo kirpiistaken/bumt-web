@@ -318,9 +318,9 @@ export function InstructorScheduleEditor({ instructor }) {
   const when = (r) => DAY_NAMES[r.weekday] + ' ' + r.hour + ':00';
   const contact = (r) => html`
     <span class="req-contact">
-      <span class="mono">${r.student_no}</span>
-      ${r.phone ? html` · <a href=${'tel:' + r.phone}>${r.phone}</a>` : null}
-      · <button type="button" class="link-btn" onClick=${() => requestWhatsApp('ders', r.id, 'Merhaba ' + r.full_name + ', BÜMT ders talebin hakkında yazıyorum.')}>WhatsApp'tan yaz</button>
+      ${r.student_no ? html`<span class="mono">${r.student_no}</span> · ` : null}
+      ${r.phone ? html`<a href=${'tel:' + r.phone}>${r.phone}</a> · ` : null}
+      <button type="button" class="link-btn" onClick=${() => requestWhatsApp('ders', r.id, 'Merhaba ' + r.full_name + ', BÜMT ders talebin hakkında yazıyorum.')}>WhatsApp'tan yaz</button>
       ${r.contact_email ? html` · <a href=${'mailto:' + r.contact_email}>${r.contact_email}</a>` : null}
     </span>`;
 
