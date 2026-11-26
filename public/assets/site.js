@@ -528,7 +528,7 @@ function Home({ me }) {
 // Instagram
 // ---------------------------------------------------------------------
 const IG_ACCOUNTS = [
-  { handle: 'baskentmt', name: 'Başkent Müzik Topluluğu', sub: 'Duyurular, etkinlikler, sahne anları', logo: '/assets/logo.png' },
+  { handle: 'baskentmt', name: 'Başkent Müzik Topluluğu', sub: 'Duyurular, etkinlikler, sahne anları', logo: '/assets/logo-kare.png' },
   { handle: 'baskent.rock', name: 'Başkent Rock & Metal Komitesi', sub: 'Topluluğumuzun rock & metal komitesi', logo: '/assets/rmk.jpg', cover: true }
 ];
 const IG_ICON = 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM17.5 6.5h.01';

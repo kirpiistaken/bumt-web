@@ -36,7 +36,7 @@ function eventMail(base, e, name, unsubUrl) {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
     <tr><td style="background:#141414;border-radius:18px 18px 0 0;padding:16px 22px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td width="52"><img src="${esc(base)}/assets/logo.png" width="44" height="44" alt="BÜMT" style="display:block;border-radius:50%;background:#fff"></td>
+        <td width="70"><img src="${esc(base)}/assets/logo.png" width="67" height="46" alt="BÜMT" style="display:block;border:0"></td>
         <td style="padding-left:12px"><div style="color:#F4EAD5;font-size:22px;font-weight:bold;letter-spacing:.04em">BÜMT</div><div style="color:#CFC6B4;font-size:12px">Başkent Üniversitesi Müzik Topluluğu</div></td>
         <td align="right">${pill(isDuyuru ? 'Duyuru' : (e.tag || 'Etkinlik'), '#D7301F', '#fff')}</td>
       </tr></table>

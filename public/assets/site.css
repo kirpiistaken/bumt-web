@@ -671,3 +671,17 @@ body { overflow-x: clip; }
 .notify-card-wrap .notify-card { border-top: 1px solid #EEE6D6; padding-top: 12px; }
 .news-opt { background: #FFF4E5; border: 2px solid #141414; border-radius: 14px; padding: 12px 14px; }
 .news-opt input { accent-color: #D7301F; }
+
+/* Yeni logo (yatay, beyaz konturlu) — yuvarlak çerçeve yok */
+.brand-logo { width: auto; height: 58px; border-radius: 0; background: none; overflow: visible; }
+.brand-logo img { width: auto; height: 58px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.35)); }
+.hero { padding-top: 116px; }
+.hero-badge { width: 250px; height: auto; top: -88px; border-radius: 0; background: none; border: 0; box-shadow: none; overflow: visible; }
+.hero-badge img { width: 100%; height: auto; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
+.ftr-logo { width: auto; height: 46px; border-radius: 0; background: none; overflow: visible; }
+.ftr-logo img { width: auto; height: 46px; }
+@media (max-width: 860px) {
+  .brand-logo, .brand-logo img { width: auto; height: 46px; }
+  .hero { padding-top: 96px; }
+  .hero-badge { width: 200px; height: auto; top: -70px; }
+}
