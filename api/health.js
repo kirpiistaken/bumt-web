@@ -11,30 +11,7 @@ function kind(k) {
   } catch (e) { return 'tanınmayan biçim'; }
 }
 
-async function diagSinif() {
-  // Geçici test: üye gibi sınıf kaydet, geri oku, test kullanıcısını sil
-  const PUBLIC_KEY = (process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
-  const email = '99999998@uye.bumt.com.tr', pw = 'Tst-' + Math.random().toString(36).slice(2) + 'A1';
-  const out = {};
-  const c = await sb('/auth/v1/admin/users', { method: 'POST', body: JSON.stringify({ email, password: pw, email_confirm: true, user_metadata: { full_name: 'Sinif Test', class_year: '2. sınıf', department: 'Test' } }) });
-  if (!c.ok) return { olusturma: c.status + ' ' + JSON.stringify(c.data).slice(0, 200) };
-  const id = c.data.id || (c.data.user && c.data.user.id);
-  try {
-    const p0 = await sb('/rest/v1/profiles?select=class_year,department&id=eq.' + id); out.kayit_sonrasi = p0.data;
-    const t = await fetch(SB_URL + '/auth/v1/token?grant_type=password', { method: 'POST', headers: { apikey: PUBLIC_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: pw }) });
-    const tj = await t.json(); const tok = tj.access_token;
-    out.giris = !!tok;
-    const u = await fetch(SB_URL + '/rest/v1/profiles?id=eq.' + id, { method: 'PATCH', headers: { apikey: PUBLIC_KEY, Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json', Prefer: 'return=representation' }, body: JSON.stringify({ class_year: 'Hazırlık', department: 'Test2' }) });
-    out.guncelle = u.status + ' ' + (await u.text()).slice(0, 300);
-    const p1 = await sb('/rest/v1/profiles?select=class_year,department&id=eq.' + id); out.guncelleme_sonrasi = p1.data;
-  } finally {
-    const d = await sb('/auth/v1/admin/users/' + id, { method: 'DELETE' }); out.silindi = d.ok;
-  }
-  return out;
-}
-
 module.exports = async (req, res) => {
-  if (/[?&]diag=sinif/.test(req.url || '')) { res.setHeader('Content-Type', 'application/json; charset=utf-8'); return res.end(JSON.stringify(await diagSinif(), null, 1)); }
   const out = {
     supabase_url: SB_URL ? SB_URL.replace(/^https:\/\/([a-z0-9]{4})[a-z0-9]*/, 'https://$1…') : 'yok',
     publishable_key: (process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY) ? 'var' : 'yok',
@@ -67,8 +44,6 @@ module.exports = async (req, res) => {
     out.ai_denetim = process.env.ANTHROPIC_API_KEY ? 'açık' : 'kapalı (ANTHROPIC_API_KEY yok — sadece kelime listesi)';
     out.sql_016_egitmen_hesaptan = '(SQL Editor\'de çalıştırıldıysa tamam — buradan kontrol edilemiyor)';
     const a = await sb('/auth/v1/admin/users?per_page=1');
-    { const c = await sb('/rest/v1/profiles?select=class_year,department&is_staff=eq.false'); if (c.ok && Array.isArray(c.data)) out.uye_sinif_dolu = c.data.filter((x) => x.class_year).length + ' / ' + c.data.length + ' (bölüm dolu: ' + c.data.filter((x) => x.department).length + ')'; }
-    { const u = await sb('/auth/v1/admin/users?per_page=200'); const list = u.ok && u.data && Array.isArray(u.data.users) ? u.data.users : []; const vals = {}; list.forEach((x) => { const v = x.user_metadata && x.user_metadata.class_year; const k = v === undefined ? '(yok)' : (v === '' ? '(boş)' : 'dolu'); vals[k] = (vals[k] || 0) + 1; }); out.kayit_sinif_meta = JSON.stringify(vals); }
     out.auth_admin = a.ok ? 'ok' : ('hata ' + a.status + ': ' + JSON.stringify(a.data).slice(0, 160));
   }
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
