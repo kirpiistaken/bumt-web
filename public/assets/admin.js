@@ -1452,6 +1452,7 @@ function EtkinlikAdmin() {
   const [list, setList] = useState(null);
   const [forms, setForms] = useState([]);
   const [edit, setEdit] = useState(null);
+  const [mailing, setMailing] = useState(null);
   const load = useCallback(async () => {
     const [{ data: e }, { data: f }] = await Promise.all([
       sb.from('events').select('*').order('sort').order('starts_on'),
@@ -1477,11 +1478,62 @@ function EtkinlikAdmin() {
                 <span class="sub">${e.form_id ? 'Buton: forma yönlendirir' : e.cta_url ? 'Buton: ' + e.cta_url : 'Buton yok'}</span>
               </div>
               <span class=${'badge ' + (e.published ? 'badge-ok' : 'badge-no')}>${e.published ? 'Yayında' : 'Taslak'}</span>
+              <button type="button" class="btn btn-sm btn-red" title="Üyelere e-postayla gönder" onClick=${() => setMailing(e)}>📧 ${e.mailed_at ? 'Gönderildi' : 'E-postayla duyur'}</button>
               <button type="button" class="btn btn-sm btn-ghost" onClick=${() => setEdit(e)}>Düzenle</button>
             </div>`)}
         </div>`}
+      ${mailing ? html`<${EventMail} e=${mailing} onClose=${() => { setMailing(null); load(); }} />` : null}
       ${edit ? html`<${EventEdit} e=${edit} forms=${forms} onClose=${() => setEdit(null)} onSaved=${() => { setEdit(null); load(); }} />` : null}
     </div>`;
+}
+
+// Etkinliği üyelere e-postayla duyur
+async function duyuruApi(action, event_id) {
+  const { data: { session } } = await sb.auth.getSession();
+  const r = await fetch('/api/duyuru', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session ? session.access_token : '') }, body: JSON.stringify({ action, event_id }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'İşlem başarısız (' + r.status + ')');
+  return d;
+}
+function EventMail({ e, onClose }) {
+  const [info, setInfo] = useState(null);
+  const [prev, setPrev] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [result, setResult] = useState(null);
+  useEffect(() => {
+    duyuruApi('count', e.id).then(setInfo).catch((x) => setInfo({ error: x.message }));
+    duyuruApi('preview', e.id).then(setPrev).catch(() => {});
+  }, [e.id]);
+  const test = async () => {
+    setBusy('test');
+    try { const d = await duyuruApi('test', e.id); toast('Test e-postası gönderildi: ' + d.to); } catch (x) { toast(x.message, 'err'); }
+    setBusy('');
+  };
+  const send = async () => {
+    if (!confirm('"' + e.title + '" duyurusu ' + info.count + ' üyeye e-postayla gönderilsin mi?' + (info.mailed_at ? '\n\nDİKKAT: Bu etkinlik daha önce gönderilmiş (' + fmtDateTime(info.mailed_at) + '). Tekrar gönderilecek.' : ''))) return;
+    setBusy('send');
+    try { const d = await duyuruApi('send', e.id); setResult(d); toast(d.sent + ' üyeye gönderildi.'); } catch (x) { toast(x.message, 'err'); }
+    setBusy('');
+  };
+  return html`
+    <${Modal} title="E-postayla duyur" onClose=${onClose} wide=${true}>
+      <div class="stack">
+        ${!info ? html`<p class="muted">Alıcılar sayılıyor…</p>` : info.error ? html`<p class="form-err">${info.error}</p>` : html`
+          <div class="mail-sum">
+            <div><b class="mail-num">${info.count}</b><span class="sub">üyeye gidecek${info.total != null ? ' (onaylı ' + info.total + ' üyeden; e-postası olmayan ya da abonelikten çıkanlar hariç)' : ''}</span></div>
+            ${info.mailed_at ? html`<span class="badge badge-wait">Daha önce gönderildi · ${fmtDateTime(info.mailed_at)}</span>` : html`<span class="badge badge-no">Henüz gönderilmedi</span>`}
+          </div>`}
+        ${result ? html`<p class="badge badge-ok self-start">✓ ${result.sent} üyeye gönderildi${result.failed ? ' · ' + result.failed + ' gönderilemedi' : ''}</p>` : null}
+        ${!e.poster_url ? html`<p class="small muted">İpucu: Afiş yüklersen e-postanın en üstünde büyük görünür.</p>` : null}
+        <div class="mail-prev">
+          ${prev ? html`<div class="sub mail-subj"><b>Konu:</b> ${prev.subject}</div><iframe title="E-posta önizleme" srcdoc=${prev.html} sandbox=""></iframe>` : html`<p class="muted pad">Önizleme hazırlanıyor…</p>`}
+        </div>
+        <div class="row">
+          <button type="button" class="btn btn-ghost" disabled=${!!busy} onClick=${test}>${busy === 'test' ? 'Gönderiliyor…' : 'Önce kendime test gönder'}</button>
+          <button type="button" class="btn btn-red" disabled=${!!busy || !info || info.error || !info.count} onClick=${send}>${busy === 'send' ? 'Gönderiliyor…' : 'Tüm üyelere gönder' + (info && info.count ? ' (' + info.count + ')' : '')}</button>
+        </div>
+      </div>
+    <//>`;
 }
 
 function EventEdit({ e, forms, onClose, onSaved }) {

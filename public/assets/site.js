@@ -423,29 +423,41 @@ function gateMessage(g) {
 // Ana sayfa
 // ---------------------------------------------------------------------
 const WA_ICON = 'M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z';
-// E-posta bildirimi aç/kapa — dokununca anında kaydedilir (Kaydet gerekmez)
-function NotifyToggle({ me, compact }) {
-  const p = me && me.profile;
-  const [on, setOn] = useState(p ? p.notify_dm !== false : true);
+// E-posta tercihleri — dokununca anında kaydedilir (Kaydet gerekmez)
+function Switch({ on, busy, onClick, label }) {
+  return html`<button type="button" role="switch" aria-checked=${on} aria-label=${label} disabled=${busy} class=${'sw' + (on ? ' sw-on' : '')} onClick=${onClick}><span></span></button>`;
+}
+function usePref(p, key, msgs) {
+  const [on, setOn] = useState(p ? p[key] !== false : true);
   const [busy, setBusy] = useState(false);
-  if (!p || !('notify_dm' in p)) return null;
   const flip = async () => {
     const v = !on; setOn(v); setBusy(true);
-    const { error } = await sb.from('profiles').update({ notify_dm: v }).eq('id', p.id);
+    const { error } = await sb.from('profiles').update({ [key]: v }).eq('id', p.id);
     setBusy(false);
     if (error) { setOn(!v); return toast('Kaydedilemedi: ' + error.message, 'err'); }
-    p.notify_dm = v;
-    toast(v ? 'Yeni mesajlarda e-posta alacaksın.' : 'Mesaj e-postaları kapatıldı.');
+    p[key] = v; toast(v ? msgs[0] : msgs[1]);
   };
-  const sw = html`<button type="button" role="switch" aria-checked=${on} disabled=${busy} class=${'sw' + (on ? ' sw-on' : '')} onClick=${flip}><span></span></button>`;
-  if (compact) return html`<div class="notify-mini">${sw}<span>E-posta bildirimi ${on ? 'açık' : 'kapalı'}</span></div>`;
+  return [on, busy, flip];
+}
+function NotifyToggle({ me, compact }) {
+  const p = me && me.profile;
+  const [dm, dmBusy, flipDm] = usePref(p, 'notify_dm', ['Yeni mesajlarda e-posta alacaksın.', 'Mesaj e-postaları kapatıldı.']);
+  const [news, newsBusy, flipNews] = usePref(p, 'news_mail', ['Etkinlik duyurularını e-postayla alacaksın.', 'Duyuru e-postaları kapatıldı.']);
+  if (!p || !('notify_dm' in p)) return null;
+  if (compact) return html`<div class="notify-mini"><${Switch} on=${dm} busy=${dmBusy} onClick=${flipDm} label="Mesaj e-posta bildirimi" /><span>E-posta bildirimi ${dm ? 'açık' : 'kapalı'}</span></div>`;
   return html`
-    <div class="card pad notify-card">
-      <div class="stack-xs">
-        <b>🔔 Mesaj bildirimleri</b>
-        <span class="muted small">Biri sana site üzerinden mesaj yazınca ${p.contact_email ? html`<b>${p.contact_email}</b>` : 'e-posta adresine'} haber verelim.${!p.contact_email ? ' (Önce aşağıdan bir e-posta adresi ekle.)' : ''}</span>
+    <div class="card pad stack notify-card-wrap">
+      <b>🔔 E-posta bildirimleri</b>
+      ${!p.contact_email ? html`<span class="small form-err">Profilinde e-posta adresi yok; aşağıdan ekleyince bildirimler gelmeye başlar.</span>` : html`<span class="muted small">Bildirimler <b>${p.contact_email}</b> adresine gelir.</span>`}
+      ${'news_mail' in p ? html`
+        <div class="notify-card">
+          <div class="stack-xs"><b class="small">🎸 Etkinlik ve duyurular</b><span class="muted small">Yeni etkinlik duyurulunca afişiyle birlikte e-posta gelsin.</span></div>
+          <${Switch} on=${news} busy=${newsBusy} onClick=${flipNews} label="Etkinlik ve duyuru e-postaları" />
+        </div>` : null}
+      <div class="notify-card">
+        <div class="stack-xs"><b class="small">💬 Yeni mesajlar</b><span class="muted small">Biri sana site üzerinden mesaj yazınca haber verelim.</span></div>
+        <${Switch} on=${dm} busy=${dmBusy} onClick=${flipDm} label="Mesaj e-posta bildirimi" />
       </div>
-      ${sw}
     </div>`;
 }
 
@@ -1306,7 +1318,7 @@ function Giris({ me }) {
 }
 
 function Kayit({ me }) {
-  const [f, setF] = useState({ full_name: '', student_no: '', phone: '', contact_email: '', faculty: '', department: '', class_year: '1. sınıf', member_type: 'muzisyen', instruments: [], password: '', password2: '', kvkk: false });
+  const [f, setF] = useState({ news_mail: true, full_name: '', student_no: '', phone: '', contact_email: '', faculty: '', department: '', class_year: '1. sınıf', member_type: 'muzisyen', instruments: [], password: '', password2: '', kvkk: false });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [done, setDone] = useState(false);
@@ -1336,7 +1348,7 @@ function Kayit({ me }) {
       options: { data: {
         full_name: f.full_name.trim(), phone: f.phone.trim(), contact_email: f.contact_email.trim(),
         faculty: f.faculty, department: f.department.trim(), class_year: f.class_year, member_type: f.member_type,
-        instruments: f.member_type === 'muzisyen' ? f.instruments : [], kvkk: true
+        instruments: f.member_type === 'muzisyen' ? f.instruments : [], kvkk: true, news_mail: !!f.news_mail
       } }
     });
     setBusy(false);
@@ -1377,6 +1389,7 @@ function Kayit({ me }) {
           <${Field} label="Şifre" hint="En az 6 karakter"><input class="inp" type="password" required autocomplete="new-password" value=${f.password} onInput=${set('password')} /><//>
           <${Field} label="Şifre (tekrar)"><input class="inp" type="password" required autocomplete="new-password" value=${f.password2} onInput=${set('password2')} /><//>
         </div>
+        <label class="check check-top news-opt"><input type="checkbox" checked=${f.news_mail} onChange=${(e) => setF({ ...f, news_mail: e.target.checked })} /><span><b>Etkinlik ve duyuruları e-postayla almak istiyorum</b> 🎸<br /><span class="muted small">Konserler, dinletiler, jam geceleri… Yeni etkinlik duyurulunca afişiyle haber verelim. İstediğin zaman tek tıkla kapatabilirsin.</span></span></label>
         <label class="check check-top"><input type="checkbox" checked=${f.kvkk} onChange=${set('kvkk')} /><span>Kişisel verilerimin <a href="#/kvkk" target="_blank">KVKK aydınlatma metni</a> kapsamında topluluk üyeliği için işlenmesini kabul ediyorum.</span></label>
         ${err ? html`<p class="form-err" role="alert">${err}</p>` : null}
         <button type="submit" class="btn btn-red self-start" disabled=${busy}>${busy ? 'Gönderiliyor…' : 'Kaydı gönder'}</button>
@@ -2254,6 +2267,7 @@ function Kvkk() {
       <h1 class="h2">KVKK Aydınlatma Metni</h1>
       <p>Başkent Üniversitesi Müzik Topluluğu (BÜMT) olarak, siteye üye olurken ve siteyi kullanırken paylaştığın ad soyad, öğrenci numarası, telefon, e-posta, fakülte, bölüm, sınıf, müzik bilgileri, profil fotoğrafı ve "Hakkımda" yazını; üyeliğini doğrulamak, topluluk faaliyetlerini (müzisyen pazarı, prova odası, enstrüman kursları, dinleti ve etkinlik başvuruları) yürütmek ve seninle iletişime geçmek amacıyla işliyoruz.</p>
       <p><b>Kim neyi görür?</b> Telefon numaran ve e-posta adresin sitede hiçbir üyeye gösterilmez; yalnızca topluluğun süper yöneticisi görebilir. Müzisyen pazarındaki "WhatsApp'tan yaz" butonu, numaranı göstermeden yalnızca onaylı üyelerin sana WhatsApp'tan yazabilmesini sağlar. Onaylı üyeler; adını soyadını (ilanlarda soyadının yalnızca baş harfi görünür), profil fotoğrafını, fakülte/bölüm bilgini, enstrümanlarını ve ilanlarını görebilir. Üyelik başvurularını ve talepleri yalnızca ilgili yetkiye sahip yönetim kurulu üyeleri görür.</p>
+      <p><b>E-posta duyuruları:</b> Kayıtta işaretli bıraktıysan, topluluğun etkinlik ve duyurularını e-posta adresine göndeririz. Her e-postanın altındaki "Abonelikten çık" bağlantısından ya da Profilim sayfasından istediğin zaman kapatabilirsin.</p>
       <p><b>Prova odası fotoğrafları:</b> Prova odası kullanımı sonrası yüklenen oda fotoğrafları yalnızca kontrol amacıyla tutulur ve yönetim onayından 7 gün sonra otomatik olarak silinir.</p>
       <p><b>Hizmet sağlayıcılar:</b> Verilerin; sitenin veritabanı (Supabase), barındırma (Vercel) ve e-posta gönderimi (Resend) hizmetlerini sağlayan şirketlerin, yurt dışında da bulunabilen sunucularında saklanır ve işlenir. Müzisyen pazarı ilanlarının metni, uygunsuz içerik kontrolü için otomatik bir denetim hizmetinden geçirilebilir. Verilerin bu hizmetler dışında üçüncü kişilerle paylaşılmaz ve ticari amaçla kullanılmaz.</p>
       <p><b>Saklama süresi:</b> Bilgilerin üyeliğin devam ettiği sürece saklanır; hesabının silinmesini istediğinde silinir.</p>

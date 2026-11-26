@@ -89,12 +89,14 @@ export async function loadMe() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return null;
   const uid = session.user.id;
-  const [{ data: profile }, { data: priv }, { data: access }, { data: instructor }] = await Promise.all([
+  const [{ data: profile }, { data: priv }, { data: access }, { data: instructor }, news] = await Promise.all([
     sb.from('profiles').select(PROFILE_COLS + ', roles(name, permissions)').eq('id', uid).maybeSingle(),
     sb.rpc('my_private'),
     sb.rpc('my_access'),
-    sb.from('instructors').select(INSTRUCTOR_COLS).eq('profile_id', uid).maybeSingle()
+    sb.from('instructors').select(INSTRUCTOR_COLS).eq('profile_id', uid).maybeSingle(),
+    sb.from('profiles').select('news_mail').eq('id', uid).maybeSingle() // 028 çalıştırılmadıysa hata verir, sorun değil
   ]);
+  if (profile && news && !news.error && news.data) profile.news_mail = news.data.news_mail;
   if (!profile) return { session, user: session.user, profile: null, perms: [], can: () => false, instructor: null };
   const pv = priv || {};
   profile.phone = pv.phone || '';

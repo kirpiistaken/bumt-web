@@ -668,3 +668,6 @@ body { overflow-x: clip; }
 }
 @media (min-width: 861px) and (max-width: 1280px) { .brand-txt small { display: none; } .hdr-in { gap: 12px 24px; } }
 @media (min-width: 861px) and (max-width: 1080px) { .menu-name { display: none; } .nav-a { padding: 0 10px; } .nav { gap: 2px; } }
+.notify-card-wrap .notify-card { border-top: 1px solid #EEE6D6; padding-top: 12px; }
+.news-opt { background: #FFF4E5; border: 2px solid #141414; border-radius: 14px; padding: 12px 14px; }
+.news-opt input { accent-color: #D7301F; }

@@ -253,3 +253,11 @@ textarea.inp { resize: vertical; }
 .dr-post p { margin: 4px 0 0; white-space: pre-wrap; }
 .dr-post .badge:not([class*="badge-"]) { background: #F1EDE4; color: #5E5648; }
 .row-sm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* Etkinlik e-postası */
+.mail-sum { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; background: #FBF6EC; border-radius: 12px; padding: 12px 14px; }
+.mail-sum > div { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mail-num { font-size: 28px; }
+.mail-prev { border: 1px solid var(--line2); border-radius: 12px; overflow: hidden; background: #F4EAD5; }
+.mail-subj { padding: 8px 12px; background: #fff; border-bottom: 1px solid var(--line2); }
+.mail-prev iframe { display: block; width: 100%; height: 520px; border: 0; }
