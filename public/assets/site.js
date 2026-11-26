@@ -1373,7 +1373,7 @@ function Kayit({ me }) {
           <${Field} label="Kişisel e-posta" hint="Gmail, Outlook gibi kişisel bir adres yaz; okul e-postanı DEĞİL. Şifre sıfırlama ve yeni mesaj bildirimleri buraya gelir."><input class="inp" type="email" required autocomplete="email" value=${f.contact_email} onInput=${set('contact_email')} placeholder="ornek@gmail.com" /><//>
           <${Field} label="Fakülte"><${FacultySelect} required value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>
           <${Field} label="Bölüm"><input class="inp" required value=${f.department} onInput=${set('department')} placeholder="ör. Bilgisayar Mühendisliği" /><//>
-          <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
+          <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option value=${c}>${c}</option>`)}</select><//>
         </div>
         <fieldset class="fs"><legend>Toplulukta ne olarak varsın?</legend>
           <div class="row">
@@ -1410,7 +1410,7 @@ function Profil({ me, refresh }) {
     if (me === null) go('/giris');
     if (!me || !me.profile) return;
     const p = me.profile;
-    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, ...(HAS_FACULTY ? { faculty: p.faculty || '' } : {}), department: p.department, class_year: p.class_year || '1. sınıf', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '' });
+    setF({ full_name: p.full_name, phone: p.phone, contact_email: p.contact_email, ...(HAS_FACULTY ? { faculty: p.faculty || '' } : {}), department: p.department, class_year: p.class_year || '', member_type: p.member_type, instruments: p.instruments || [], bio: p.bio || '' });
     loadMine();
   }, [me && me.user.id]);
 
@@ -1432,6 +1432,7 @@ function Profil({ me, refresh }) {
 
   const save = async (e) => {
     e.preventDefault();
+    if (!f.class_year) return toast('Sınıfını seç.', 'err');
     setBusy(true);
     const { error } = await sb.from('profiles').update({ ...f, instruments: f.member_type === 'muzisyen' ? f.instruments : [] }).eq('id', me.user.id);
     setBusy(false);
@@ -1528,7 +1529,7 @@ function Profil({ me, refresh }) {
           <${Field} label="E-posta" hint=${f.contact_email ? 'Şifre sıfırlama linki buraya gelir' : 'E-posta eklemezsen şifreni unuttuğunda sıfırlayamazsın'}><input class="inp" type="email" value=${f.contact_email} onInput=${set('contact_email')} /><//>
           ${HAS_FACULTY ? html`<${Field} label="Fakülte"><${FacultySelect} value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>` : null}
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
-          <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
+          <${Field} label="Sınıf" hint=${!f.class_year ? 'Sınıfın kayıtlı değil, lütfen seç.' : null}><select class=${'inp' + (!f.class_year ? ' inp-warn' : '')} value=${f.class_year} onChange=${set('class_year')}><option value="" disabled>Seç…</option>${CLASS_YEARS.map((c) => html`<option value=${c}>${c}</option>`)}</select><//>
         </div>
         <${Field} label="Hakkımda" hint="Kısa bir tanıtım: ne çalıyorsun, hangi tarzları seviyorsun, neler yapmak istiyorsun…"><textarea class="inp" rows="3" maxlength="500" value=${f.bio} onInput=${set('bio')}></textarea><//>
         <fieldset class="fs"><legend>Toplulukta</legend>

@@ -371,7 +371,7 @@ function MemberForm({ f, setF, showPhone }) {
       ${showPhone ? html`<${Field} label="Telefon"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>` : null}
       ${HAS_FACULTY ? html`<${Field} label="Fakülte"><${FacultySelect} value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>` : null}
       <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
-      <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>
+      <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option value=${c}>${c}</option>`)}</select><//>
       <${Field} label="Tür"><select class="inp" value=${f.member_type} onChange=${set('member_type')}><option value="dinleyici">Dinleyici</option><option value="muzisyen">Müzisyen</option></select><//>
       <${Field} label="Enstrümanlar" hint="Virgülle ayır"><input class="inp" value=${f.instruments_text} onInput=${set('instruments_text')} placeholder="Gitar, Vokal" /><//>
     </div>`;
@@ -1207,7 +1207,7 @@ function InstructorEdit({ me, t, onClose, onSaved }) {
         <div class="fgrid">
           <${Field} label="Ad Soyad"><input class="inp" required value=${f.full_name} onInput=${set('full_name')} /><//>
           <${Field} label="Enstrüman"><input class="inp" required list="ins-list" value=${f.instrument} onInput=${set('instrument')} /><datalist id="ins-list">${INSTRUMENTS.map((i) => html`<option value=${i}></option>`)}</datalist><//>
-          <${Field} label="Tür"><select class="inp" value=${f.kind} onChange=${set('kind')}>${KINDS.map((k) => html`<option>${k}</option>`)}</select><//>
+          <${Field} label="Tür"><select class="inp" value=${f.kind} onChange=${set('kind')}>${KINDS.map((k) => html`<option value=${k}>${k}</option>`)}</select><//>
           ${f.profile_id ? html`
           <div class="fld span-2"><span>Fakülte / bölüm / sınıf</span>
             <div class="linked-box">${linked && (linked.faculty || linked.department || linked.class_year) ? html`<${SchoolLine} p=${linked} />` : html`<span class="sub">Üye profilinde henüz yazılı değil.</span>`}
@@ -1215,7 +1215,7 @@ function InstructorEdit({ me, t, onClose, onSaved }) {
           </div>` : html`
           ${HAS_FACULTY ? html`<${Field} label="Fakülte"><${FacultySelect} value=${f.faculty} onChange=${(v) => setF({ ...f, faculty: v })} /><//>` : null}
           <${Field} label="Bölüm"><input class="inp" value=${f.department} onInput=${set('department')} /><//>
-          <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option>${c}</option>`)}</select><//>`}
+          <${Field} label="Sınıf"><select class="inp" value=${f.class_year} onChange=${set('class_year')}><option value="">—</option>${CLASS_YEARS.map((c) => html`<option value=${c}>${c}</option>`)}</select><//>`}
           ${me.isSuper || !t.id ? html`
           <${Field} label="WhatsApp numarası" hint="Boşsa bağlı hesabın telefonu kullanılır; sitede görünmez"><input class="inp" type="tel" value=${f.phone} onInput=${set('phone')} /><//>
           <${Field} label="E-posta" hint="Ders talepleri buraya gönderilir"><input class="inp" type="email" value=${f.email} onInput=${set('email')} /><//>` : null}

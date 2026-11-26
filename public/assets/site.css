@@ -685,3 +685,4 @@ body { overflow-x: clip; }
   .hero { padding-top: 96px; }
   .hero-badge { width: 200px; height: auto; top: -70px; }
 }
+.inp-warn { border-color: var(--red); box-shadow: 0 0 0 3px rgba(215,48,31,.15); }

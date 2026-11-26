@@ -44,6 +44,7 @@ module.exports = async (req, res) => {
     out.ai_denetim = process.env.ANTHROPIC_API_KEY ? 'açık' : 'kapalı (ANTHROPIC_API_KEY yok — sadece kelime listesi)';
     out.sql_016_egitmen_hesaptan = '(SQL Editor\'de çalıştırıldıysa tamam — buradan kontrol edilemiyor)';
     const a = await sb('/auth/v1/admin/users?per_page=1');
+    { const c = await sb('/rest/v1/profiles?select=class_year,department&is_staff=eq.false'); if (c.ok && Array.isArray(c.data)) out.uye_sinif_dolu = c.data.filter((x) => x.class_year).length + ' / ' + c.data.length + ' (bölüm dolu: ' + c.data.filter((x) => x.department).length + ')'; }
     out.auth_admin = a.ok ? 'ok' : ('hata ' + a.status + ': ' + JSON.stringify(a.data).slice(0, 160));
   }
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
