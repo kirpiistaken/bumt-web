@@ -4,7 +4,11 @@ const { esc, siteUrl, sendMail, mailLayout, btn, readBody, json } = require('./_
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
+const duyuru = require('./_duyuru');
 module.exports = async (req, res) => {
+  // /api/duyuru → (vercel.json rewrite) bu fonksiyon; Vercel ücretsiz planda 12 fonksiyon sınırı var
+  const u = String(req.url || '');
+  if (u.startsWith('/api/duyuru') || /[?&]_r=duyuru/.test(u)) return duyuru(req, res);
   if (req.method !== 'POST') return json(res, 405, { error: 'Sadece POST' });
   if (!SB_URL || !SECRET) return json(res, 500, { error: 'Sunucu ayarları eksik.' });
   let body;

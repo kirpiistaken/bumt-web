@@ -1,4 +1,4 @@
-// Etkinlik / duyuru e-postaları (bülten) ve "abonelikten çık" sayfası.
+// (api/mesaj.js üzerinden /api/duyuru) Etkinlik / duyuru e-postaları (bülten) ve "abonelikten çık" sayfası.
 //  GET  /api/duyuru?u=<token>          → abonelikten çıkma onay sayfası
 //  POST /api/duyuru (form token,d)     → çık / tekrar abone ol
 //  POST /api/duyuru?u=<token>          → e-posta istemcisinin tek tıkla çıkışı (List-Unsubscribe-Post)
