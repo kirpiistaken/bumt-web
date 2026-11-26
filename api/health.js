@@ -45,6 +45,7 @@ module.exports = async (req, res) => {
     out.sql_016_egitmen_hesaptan = '(SQL Editor\'de çalıştırıldıysa tamam — buradan kontrol edilemiyor)';
     const a = await sb('/auth/v1/admin/users?per_page=1');
     { const c = await sb('/rest/v1/profiles?select=class_year,department&is_staff=eq.false'); if (c.ok && Array.isArray(c.data)) out.uye_sinif_dolu = c.data.filter((x) => x.class_year).length + ' / ' + c.data.length + ' (bölüm dolu: ' + c.data.filter((x) => x.department).length + ')'; }
+    { const u = await sb('/auth/v1/admin/users?per_page=200'); const list = u.ok && u.data && Array.isArray(u.data.users) ? u.data.users : []; const vals = {}; list.forEach((x) => { const v = x.user_metadata && x.user_metadata.class_year; const k = v === undefined ? '(yok)' : (v === '' ? '(boş)' : 'dolu'); vals[k] = (vals[k] || 0) + 1; }); out.kayit_sinif_meta = JSON.stringify(vals); }
     out.auth_admin = a.ok ? 'ok' : ('hata ' + a.status + ': ' + JSON.stringify(a.data).slice(0, 160));
   }
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
