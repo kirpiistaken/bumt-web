@@ -97,6 +97,7 @@ export async function loadMe() {
     sb.from('profiles').select('news_mail').eq('id', uid).maybeSingle() // 028 çalıştırılmadıysa hata verir, sorun değil
   ]);
   if (profile && news && !news.error && news.data) profile.news_mail = news.data.news_mail;
+  if (profile) { const m = await sb.from('profiles').select('notify_match').eq('id', uid).maybeSingle(); if (!m.error && m.data) profile.notify_match = m.data.notify_match; }
   if (!profile) return { session, user: session.user, profile: null, perms: [], can: () => false, instructor: null };
   const pv = priv || {};
   profile.phone = pv.phone || '';

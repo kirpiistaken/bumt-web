@@ -686,3 +686,4 @@ body { overflow-x: clip; }
   .hero-badge { width: 200px; height: auto; top: -70px; }
 }
 .inp-warn { border-color: var(--red); box-shadow: 0 0 0 3px rgba(215,48,31,.15); }
+.post-focus { outline: 4px solid var(--red); outline-offset: 4px; transition: outline-color .4s; }

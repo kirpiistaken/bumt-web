@@ -110,7 +110,9 @@ async function moderatePost(id, base, isNew) {
       await sendMail({ to: m.contact_email, subject: (reason ? '⚠️ İncele: ' : 'BÜMT pazar: ') + p.title, html: postMail(fresh, base, m.full_name, isNew) });
     }
   }
-  return { status: reason ? 'incelemede' : 'yayinda', ai: ai.skipped ? 'kapali' : (ai.error ? 'hata' : 'ok') };
+  let match = null;
+  if (!reason && isNew) { try { match = await require('./_eslesme').notifyMatches(p.id, base); } catch (e) { console.error('eşleşme', e); } }
+  return { status: reason ? 'incelemede' : 'yayinda', ai: ai.skipped ? 'kapali' : (ai.error ? 'hata' : 'ok'), match };
 }
 
 module.exports = { moderatePost, loadPost, wordCheck, normalize };

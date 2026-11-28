@@ -443,6 +443,7 @@ function NotifyToggle({ me, compact }) {
   const p = me && me.profile;
   const [dm, dmBusy, flipDm] = usePref(p, 'notify_dm', ['Yeni mesajlarda e-posta alacaksın.', 'Mesaj e-postaları kapatıldı.']);
   const [news, newsBusy, flipNews] = usePref(p, 'news_mail', ['Etkinlik duyurularını e-postayla alacaksın.', 'Duyuru e-postaları kapatıldı.']);
+  const [match, matchBusy, flipMatch] = usePref(p, 'notify_match', ['Enstrümanına uygun yeni ilanlarda haber vereceğiz.', 'İlan bildirimleri kapatıldı.']);
   if (!p || !('notify_dm' in p)) return null;
   if (compact) return html`<div class="notify-mini"><${Switch} on=${dm} busy=${dmBusy} onClick=${flipDm} label="Mesaj e-posta bildirimi" /><span>E-posta bildirimi ${dm ? 'açık' : 'kapalı'}</span></div>`;
   return html`
@@ -453,6 +454,11 @@ function NotifyToggle({ me, compact }) {
         <div class="notify-card">
           <div class="stack-xs"><b class="small">🎸 Etkinlik ve duyurular</b><span class="muted small">Yeni etkinlik duyurulunca afişiyle birlikte e-posta gelsin.</span></div>
           <${Switch} on=${news} busy=${newsBusy} onClick=${flipNews} label="Etkinlik ve duyuru e-postaları" />
+        </div>` : null}
+      ${'notify_match' in p && p.member_type === 'muzisyen' ? html`
+        <div class="notify-card">
+          <div class="stack-xs"><b class="small">🎯 Bana uygun ilanlar</b><span class="muted small">Müzisyen pazarında ${(p.instruments || []).length ? html`<b>${p.instruments.join(', ')}</b>` : 'çaldığın enstrümanı'} arayan yeni bir ilan açılınca haber verelim.</span></div>
+          <${Switch} on=${match} busy=${matchBusy} onClick=${flipMatch} label="Uygun ilan bildirimleri" />
         </div>` : null}
       <div class="notify-card">
         <div class="stack-xs"><b class="small">💬 Yeni mesajlar</b><span class="muted small">Biri sana site üzerinden mesaj yazınca haber verelim.</span></div>
@@ -1725,8 +1731,9 @@ function Yoklama({ code, me }) {
 // ---------------------------------------------------------------------
 const POST_KINDS = ['Grup kuruyorum', 'Gruba katılmak istiyorum', 'Müzisyen arıyorum', 'Diğer'];
 
-function Pazar({ me }) {
+function Pazar({ me, focus }) {
   const [posts, setPosts] = useState(null);
+  const [notified, setNotified] = useState({});
   const [filter, setFilter] = useState('Tümü');
   const [form, setForm] = useState(null);
   const uid = me && me.user.id;
@@ -1748,6 +1755,15 @@ function Pazar({ me }) {
     (data || []).filter((p) => p.review === 'kontrol' && p.user_id === uid).forEach((p) => checkPost(p.id, false).then(() => setTimeout(load, 300)));
   }, [uid]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!canModerate || !posts) return;
+    sb.from('market_posts').select('id,match_notified_at').eq('active', true).then(({ data, error }) => { if (!error) setNotified(Object.fromEntries((data || []).map((x) => [x.id, x.match_notified_at]))); });
+  }, [canModerate, posts]);
+  useEffect(() => {
+    if (!focus || !posts) return;
+    const el = document.getElementById('post-' + focus);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('post-focus'); setTimeout(() => el.classList.remove('post-focus'), 2600); }
+  }, [focus, posts]);
   if (!posts) return html`<${Loading} />`;
 
   const roles = ['Tümü', ...Array.from(new Set(posts.flatMap((p) => p.looking_for || [])))];
@@ -1784,7 +1800,20 @@ function Pazar({ me }) {
     const { error } = await sb.from('market_posts').update({ review: '', review_reason: '' }).eq('id', p.id);
     if (error) return toast(errMsg(error), 'err');
     toast('İlan yayına alındı.');
+    pazarApi({ id: p.id, action: 'match' }).then((d) => { if (d && d.sent) toast('İlan, ' + d.sent + ' uygun müzisyene e-postayla bildirildi.'); });
     load();
+  };
+  const notifyMatch = async (p) => {
+    const c = await pazarApi({ id: p.id, action: 'match_count' });
+    if (!c || c.error) return toast((c && c.error) || 'Bağlantı hatası', 'err');
+    if (c.skipped) return toast('İlan yayında değil.', 'err');
+    if (!c.count) return toast('Bu ilanın aradığı enstrümanı çalan, bildirimi açık üye yok.', 'err');
+    const again = !!notified[p.id];
+    if (!confirm((again ? 'Bu ilan daha önce bildirildi. TEKRAR ' : '') + '"' + p.title + '" ilanı, ' + (p.looking_for || []).join(', ') + ' çalan ' + c.count + ' üyeye e-postayla bildirilsin mi?')) return;
+    const d = await pazarApi({ id: p.id, action: 'match', force: true });
+    if (!d || d.error) return toast((d && d.error) || 'Gönderilemedi', 'err');
+    toast(d.sent + ' üyeye gönderildi.' + (d.failed ? ' (' + d.failed + ' gönderilemedi)' : ''));
+    setNotified({ ...notified, [p.id]: new Date().toISOString() });
   };
   const toggleRole = (r) => setForm({ ...form, looking_for: form.looking_for.includes(r) ? form.looking_for.filter((x) => x !== r) : [...form.looking_for, r] });
 
@@ -1850,7 +1879,7 @@ function Pazar({ me }) {
             const mine = p.user_id === uid;
             const hidden = p.review === 'incelemede' || p.review === 'kontrol';
             return html`
-              <article class=${'card pad stack post' + (hidden ? ' post-hidden' : '')}>
+              <article id=${'post-' + p.id} class=${'card pad stack post' + (hidden ? ' post-hidden' : '')}>
                 ${hidden ? html`<div class="post-flag">${p.review === 'kontrol' ? 'Kontrol ediliyor…' : mine ? 'İncelemede — yönetim onaylayınca yayınlanacak' : '⚠️ Gizlendi: ' + (p.review_reason || 'uygunsuz olabilir')}
                   ${canModerate && !mine && p.review === 'incelemede' ? html` <button type="button" class="link-btn" onClick=${() => publish(p)}>Yayına al</button>` : null}</div>` : null}
                 <div class="row between"><span class="tag tag-red">${p.kind}</span><span class="muted small">${fmtShort(String(p.created_at).slice(0, 10))}</span></div>
@@ -1870,6 +1899,7 @@ function Pazar({ me }) {
                     <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>İlanı kapat</button>`
                   : html`<${ContactButtons} me=${me} approved=${approved} pref=${p.contact_pref} size="sm" ctx=${{ kind: 'market', title: p.title, otherId: p.user_id, id: p.id }} />`}
                   ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
+                  ${canModerate && !hidden && (p.looking_for || []).length ? html`<button type="button" class="link-btn" title="Aranan enstrümanı çalan üyelere e-posta" onClick=${() => notifyMatch(p)}>${notified[p.id] ? '📣 Bildirildi ✓' : '📣 Uygun müzisyenlere bildir'}</button>` : null}
                 </div>
               </article>`;
           })}
@@ -1877,6 +1907,13 @@ function Pazar({ me }) {
     </div>`;
 }
 
+async function pazarApi(body) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch('/api/pazar', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session && session.access_token) }, body: JSON.stringify(body) });
+    return await r.json().catch(() => null);
+  } catch (e) { return null; }
+}
 const MARKET_COLS = 'id,user_id,kind,title,my_role,looking_for,genre,description,display_name,avatar_url,active,created_at,contact_pref';
 async function checkPost(id, isNew) {
   try {
@@ -2312,7 +2349,7 @@ function App() {
   else if (p === 'profil') page = html`<${Profil} me=${me} refresh=${refresh} />`;
   else if (p === 'egitmen') page = html`<${Egitmen} me=${me} refresh=${refresh} />`;
   else if (p === 'kvkk') page = html`<${Kvkk} />`;
-  else if (p === 'pazar') page = html`<${Pazar} me=${me} />`;
+  else if (p === 'pazar') page = html`<${Pazar} me=${me} focus=${route.param} />`;
   else if (p === 'yoklama') page = html`<${Yoklama} code=${route.param} me=${me} />`;
   else if (p === 'uye') page = html`<${Uye} id=${route.param} me=${me} />`;
   else if (p === 'sifre') page = html`<${SifreUnuttum} />`;

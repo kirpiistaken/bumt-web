@@ -2,6 +2,7 @@
 const { SB_URL, SECRET, sb, getCaller } = require('./_auth');
 const { esc, siteUrl, page, confirmForm, readBody, json } = require('./_mail');
 const { moderatePost, loadPost } = require('./_moderate');
+const { notifyMatches } = require('./_eslesme');
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -35,6 +36,7 @@ module.exports = async (req, res) => {
     const r = await sb('/rest/v1/market_posts?id=eq.' + p.id, { method: 'PATCH', body: JSON.stringify(patch) });
     if (!r.ok) return page(res, 'İşlem yapılamadı', '<p>Bir hata oluştu, yönetim panelinden dene.</p>');
     await sb('/rest/v1/audit_log', { method: 'POST', body: JSON.stringify({ actor_name: 'E-posta linki', action: body.d === 'yayinla' ? 'Pazar ilanını yayına aldı' : 'Pazar ilanını kaldırdı', target_id: p.id, target_name: p.title }) });
+    if (body.d === 'yayinla') { try { await notifyMatches(p.id, base); } catch (e) { console.error('eşleşme', e); } }
     return page(res, body.d === 'yayinla' ? 'İlan yayına alındı' : 'İlan kaldırıldı',
       `<p style="margin:0">${esc(p.title)}</p>`, true);
   }
@@ -42,6 +44,12 @@ module.exports = async (req, res) => {
   const caller = await getCaller(req);
   if (caller.error) return json(res, 401, { error: caller.error });
   if (!UUID.test(body.id || '')) return json(res, 400, { error: 'Geçersiz ilan.' });
+  // Yönetim: aranan enstrümanı çalan üyelere bildirim (say / önizle / gönder)
+  if (['match_count', 'match_preview', 'match'].includes(body.action)) {
+    if (!caller.can('uyeler')) return json(res, 403, { error: 'Yetkisiz.' });
+    const out = await notifyMatches(body.id, base, { countOnly: body.action === 'match_count', preview: body.action === 'match_preview', force: !!body.force });
+    return json(res, out.error ? 400 : 200, out);
+  }
   const p = await loadPost('id=eq.' + body.id);
   if (!p) return json(res, 404, { error: 'İlan bulunamadı.' });
   if (p.user_id !== caller.id && !caller.can('uyeler')) return json(res, 403, { error: 'Yetkisiz.' });

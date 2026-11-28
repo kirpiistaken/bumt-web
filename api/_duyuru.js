@@ -80,20 +80,26 @@ async function sendBatch(list) {
   return { sent, failed };
 }
 
-const unsubPage = (res, base, token, done) => {
-  if (done === 'cik') return page(res, 'Abonelikten çıktın', `<p style="line-height:1.55">Artık BÜMT etkinlik ve duyuru e-postaları almayacaksın. Mesaj bildirimleri ve hesapla ilgili e-postalar etkilenmez.</p>
+const unsubPage = (res, base, token, done, t) => {
+  const ilan = t === 'ilan';
+  const what = ilan ? 'enstrümanına uygun yeni ilan bildirimlerini' : 'BÜMT etkinlik ve duyuru e-postalarını';
+  const hid = `<input type="hidden" name="token" value="${esc(token)}"><input type="hidden" name="t" value="${ilan ? 'ilan' : ''}">`;
+  if (done === 'cik') return page(res, ilan ? 'İlan bildirimleri kapandı' : 'Abonelikten çıktın', `<p style="line-height:1.55">Artık ${what} almayacaksın. Mesaj bildirimleri ve hesapla ilgili e-postalar etkilenmez.</p>
     <p style="line-height:1.55;color:#5E5648;font-size:14px">Fikrini değiştirirsen sitede <b>Profilim</b> sayfasından tekrar açabilirsin.</p>
-    <form method="post" action="/api/duyuru"><input type="hidden" name="token" value="${esc(token)}"><input type="hidden" name="d" value="gir"><button type="submit" style="font:inherit;border:0;background:none;color:#D7301F;text-decoration:underline;cursor:pointer;padding:0">Yanlışlıkla mı bastın? Tekrar abone ol</button></form>`, true);
-  if (done === 'gir') return page(res, 'Tekrar abonesin 🎉', `<p style="line-height:1.55">BÜMT etkinlik ve duyurularını yine e-postayla alacaksın.</p><p><a href="${esc(base)}" style="color:#D7301F;font-weight:bold">Siteye dön →</a></p>`, true);
-  return page(res, 'Duyuru e-postalarından çık', `<p style="line-height:1.55">BÜMT etkinlik ve duyuru e-postalarını artık almak istemiyor musun?</p>
-    <form method="post" action="/api/duyuru"><input type="hidden" name="token" value="${esc(token)}"><input type="hidden" name="d" value="cik">
-    <button type="submit" style="font:inherit;font-weight:bold;border:2px solid #141414;background:#141414;color:#fff;padding:12px 22px;border-radius:999px;cursor:pointer">Evet, abonelikten çık</button></form>`, true);
+    <form method="post" action="/api/duyuru">${hid}<input type="hidden" name="d" value="gir"><button type="submit" style="font:inherit;border:0;background:none;color:#D7301F;text-decoration:underline;cursor:pointer;padding:0">Yanlışlıkla mı bastın? Tekrar aç</button></form>`, true);
+  if (done === 'gir') return page(res, 'Tekrar açıldı 🎉', `<p style="line-height:1.55">${ilan ? 'Enstrümanına uygun yeni ilanları' : 'BÜMT etkinlik ve duyurularını'} yine e-postayla alacaksın.</p><p><a href="${esc(base)}" style="color:#D7301F;font-weight:bold">Siteye dön →</a></p>`, true);
+  return page(res, ilan ? 'İlan bildirimlerini kapat' : 'Duyuru e-postalarından çık', `<p style="line-height:1.55">${cap1(what)} artık almak istemiyor musun?</p>
+    <form method="post" action="/api/duyuru">${hid}<input type="hidden" name="d" value="cik">
+    <button type="submit" style="font:inherit;font-weight:bold;border:2px solid #141414;background:#141414;color:#fff;padding:12px 22px;border-radius:999px;cursor:pointer">Evet, kapat</button></form>`, true);
 };
+const cap1 = (s) => s.charAt(0).toLocaleUpperCase('tr') + s.slice(1);
 
-async function setNews(token, on) {
+const FIELD = (t) => (t === 'ilan' ? 'notify_match' : 'news_mail');
+async function setNews(token, on, t) {
   if (!UUID.test(token || '')) return false;
-  const r = await sb('/rest/v1/profiles?unsub_token=eq.' + token, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ news_mail: on }) });
-  return r.ok && Array.isArray(r.data) && r.data.length > 0;
+  const r = await sb('/rest/v1/profiles?unsub_token=eq.' + token, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ [FIELD(t)]: on }) });
+  if (r.ok) { const c = await sb('/rest/v1/profiles?select=id&unsub_token=eq.' + token); return c.ok && Array.isArray(c.data) && c.data.length > 0; }
+  return false;
 }
 
 module.exports = async (req, res) => {
@@ -103,21 +109,21 @@ module.exports = async (req, res) => {
   if (req.method === 'GET') {
     const t = q.get('u') || '';
     if (!UUID.test(t)) return page(res, 'Bağlantı geçersiz', '<p>Bu abonelik bağlantısı geçersiz görünüyor.</p>', false);
-    return unsubPage(res, base, t);
+    return unsubPage(res, base, t, null, q.get('t'));
   }
   if (req.method !== 'POST') return json(res, 405, { error: 'Desteklenmiyor' });
 
   // E-posta istemcisinin "tek tıkla abonelikten çık" isteği
-  if (q.get('u')) { await setNews(q.get('u'), false); return json(res, 200, { ok: true }); }
+  if (q.get('u')) { await setNews(q.get('u'), false, q.get('t')); return json(res, 200, { ok: true }); }
 
   let body;
   try { body = await readBody(req); } catch (e) { return json(res, 400, { error: 'Geçersiz istek.' }); }
 
   // Abonelik sayfasındaki form
   if (body.token && (body.d === 'cik' || body.d === 'gir')) {
-    const ok = await setNews(body.token, body.d === 'gir');
+    const ok = await setNews(body.token, body.d === 'gir', body.t);
     if (!ok) return page(res, 'Bağlantı geçersiz', '<p>Bu abonelik bağlantısı geçersiz görünüyor.</p>', false);
-    return unsubPage(res, base, body.token, body.d);
+    return unsubPage(res, base, body.token, body.d, body.t);
   }
 
   // Yönetim: gönderim
