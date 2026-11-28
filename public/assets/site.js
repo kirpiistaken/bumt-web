@@ -1733,7 +1733,6 @@ const POST_KINDS = ['Grup kuruyorum', 'Gruba katılmak istiyorum', 'Müzisyen ar
 
 function Pazar({ me, focus }) {
   const [posts, setPosts] = useState(null);
-  const [notified, setNotified] = useState({});
   const [filter, setFilter] = useState('Tümü');
   const [form, setForm] = useState(null);
   const uid = me && me.user.id;
@@ -1755,10 +1754,6 @@ function Pazar({ me, focus }) {
     (data || []).filter((p) => p.review === 'kontrol' && p.user_id === uid).forEach((p) => checkPost(p.id, false).then(() => setTimeout(load, 300)));
   }, [uid]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => {
-    if (!canModerate || !posts) return;
-    sb.from('market_posts').select('id,match_notified_at').eq('active', true).then(({ data, error }) => { if (!error) setNotified(Object.fromEntries((data || []).map((x) => [x.id, x.match_notified_at]))); });
-  }, [canModerate, posts]);
   useEffect(() => {
     if (!focus || !posts) return;
     const el = document.getElementById('post-' + focus);
@@ -1802,18 +1797,6 @@ function Pazar({ me, focus }) {
     toast('İlan yayına alındı.');
     pazarApi({ id: p.id, action: 'match' }).then((d) => { if (d && d.sent) toast('İlan, ' + d.sent + ' uygun müzisyene e-postayla bildirildi.'); });
     load();
-  };
-  const notifyMatch = async (p) => {
-    const c = await pazarApi({ id: p.id, action: 'match_count' });
-    if (!c || c.error) return toast((c && c.error) || 'Bağlantı hatası', 'err');
-    if (c.skipped) return toast('İlan yayında değil.', 'err');
-    if (!c.count) return toast('Bu ilanın aradığı enstrümanı çalan, bildirimi açık üye yok.', 'err');
-    const again = !!notified[p.id];
-    if (!confirm((again ? 'Bu ilan daha önce bildirildi. TEKRAR ' : '') + '"' + p.title + '" ilanı, ' + (p.looking_for || []).join(', ') + ' çalan ' + c.count + ' üyeye e-postayla bildirilsin mi?')) return;
-    const d = await pazarApi({ id: p.id, action: 'match', force: true });
-    if (!d || d.error) return toast((d && d.error) || 'Gönderilemedi', 'err');
-    toast(d.sent + ' üyeye gönderildi.' + (d.failed ? ' (' + d.failed + ' gönderilemedi)' : ''));
-    setNotified({ ...notified, [p.id]: new Date().toISOString() });
   };
   const toggleRole = (r) => setForm({ ...form, looking_for: form.looking_for.includes(r) ? form.looking_for.filter((x) => x !== r) : [...form.looking_for, r] });
 
@@ -1899,7 +1882,6 @@ function Pazar({ me, focus }) {
                     <button type="button" class="btn btn-sm btn-ghost" onClick=${() => close(p, false)}>İlanı kapat</button>`
                   : html`<${ContactButtons} me=${me} approved=${approved} pref=${p.contact_pref} size="sm" ctx=${{ kind: 'market', title: p.title, otherId: p.user_id, id: p.id }} />`}
                   ${canModerate && !mine ? html`<button type="button" class="link-btn" onClick=${() => close(p, true)}>Kaldır</button>` : null}
-                  ${canModerate && !hidden && (p.looking_for || []).length ? html`<button type="button" class="link-btn" title="Aranan enstrümanı çalan üyelere e-posta" onClick=${() => notifyMatch(p)}>${notified[p.id] ? '📣 Bildirildi ✓' : '📣 Uygun müzisyenlere bildir'}</button>` : null}
                 </div>
               </article>`;
           })}
